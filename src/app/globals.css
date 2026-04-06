@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-primary: #0D0D0F;
+  --bg-card: #1A1A2E;
+  --bg-card-hover: #222240;
+  --bg-input: #141422;
+  --accent-orange: #FF6B35;
+  --accent-orange-hover: #FF8555;
+  --accent-teal: #4ECDC4;
+  --accent-teal-hover: #6EDDD6;
+  --success: #2ECC71;
+  --warning: #F39C12;
+  --error: #E74C3C;
+  --text-primary: #E8E8E8;
+  --text-secondary: #8B8B9A;
+  --text-muted: #5A5A6A;
+  --border: #2A2A3E;
+  --border-active: #FF6B35;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-card: var(--bg-card);
+  --color-bg-card-hover: var(--bg-card-hover);
+  --color-bg-input: var(--bg-input);
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-orange-hover: var(--accent-orange-hover);
+  --color-accent-teal: var(--accent-teal);
+  --color-accent-teal-hover: var(--accent-teal-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-border-active: var(--border-active);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+/* Animation for streaming text */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.streaming-cursor::after {
+  content: '▊';
+  animation: pulse-dot 1s ease-in-out infinite;
+  color: var(--accent-orange);
+}
+
+/* Gate status indicators */
+.gate-locked { opacity: 0.4; }
+.gate-available { opacity: 0.7; }
+.gate-in-progress { border-color: var(--accent-orange); }
+.gate-approved { border-color: var(--success); }
