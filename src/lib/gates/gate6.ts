@@ -6,6 +6,8 @@
 // ============================================================
 
 import { GateConfigDef } from './types';
+import { EVOLVE_EXECUTION_FRAMEWORK, EVOLVE_COHERENCE_CHAIN } from './evolveFrameworks';
+import { ZAK_SCRIPT_ANALYSIS, ZAK_QUALITY_GATES } from './zakFrameworks';
 
 const gate6: GateConfigDef = {
   id: 'gate6',
@@ -21,6 +23,8 @@ const gate6: GateConfigDef = {
 
 Every concept must be anchored in a real emotional tension, a specific sub-avatar, and a clear psychological mechanism.
 
+${ZAK_SCRIPT_ANALYSIS}
+
 PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}
 TARGET LANGUAGE: ${project.targetLanguage}`,
@@ -35,13 +39,13 @@ TARGET LANGUAGE: ${project.targetLanguage}`,
 ${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : 'Not available — use product description'}
 
 MECHANISM (Gate 3):
-${g3 ? JSON.stringify(g3, null, 2).slice(0, 2000) : 'Not available'}
+${g3 ? JSON.stringify(g3, null, 2).slice(0, 4000) : 'Not available'}
 
 COPY ARSENAL (Gate 4 — hooks, open loops):
-${g4 ? JSON.stringify(g4, null, 2).slice(0, 3000) : 'Not available'}
+${g4 ? JSON.stringify(g4, null, 2).slice(0, 5000) : 'Not available'}
 
 BRAND DNA — SUB-AVATARS:
-${brandDNA?.sub_avatars ? JSON.stringify(brandDNA.sub_avatars, null, 2).slice(0, 2000) : 'Not available'}
+${brandDNA?.sub_avatars ? JSON.stringify(brandDNA.sub_avatars, null, 2).slice(0, 4000) : 'Not available'}
 
 ## CREATE 5 AD CONCEPTS
 
@@ -72,9 +76,10 @@ Output valid JSON:
       "target_sub_avatar_id": "",
       "target_sub_avatar_name": "",
       "angle": "",
-      "psychological_mechanism": "",
+      "psychological_mechanism": "MUST be one of ZAK's 8: System1/2, COM-B, SDT, Narrative Transportation, Processing Fluency, Loss Aversion, Villain Externalization, Future Pacing",
       "why_it_works": "",
       "emotional_territory": "",
+      "copy_format": "PAS|AIDA|SPS|4P|BAB|Problem Stack — selected based on awareness level",
       "hook_direction": "",
       "visual_direction": "",
       "body_copy_direction": "",
@@ -114,10 +119,10 @@ TARGET LANGUAGE: ${project.targetLanguage}`,
 ${g2 ? JSON.stringify(g2, null, 2).slice(0, 3000) : 'Not available'}
 
 MECHANISM (Gate 3):
-${g3 ? JSON.stringify(g3, null, 2).slice(0, 2000) : 'Not available'}
+${g3 ? JSON.stringify(g3, null, 2).slice(0, 4000) : 'Not available'}
 
 HOOKS & COPY ARSENAL (Gate 4):
-${g4 ? JSON.stringify(g4, null, 2).slice(0, 2000) : 'Not available'}
+${g4 ? JSON.stringify(g4, null, 2).slice(0, 4000) : 'Not available'}
 
 VOICE PROFILE:
 ${brandDNA?.voice_profile ? JSON.stringify(brandDNA.voice_profile, null, 2) : 'Not available'}
@@ -259,6 +264,8 @@ Output valid JSON:
 
 You follow the EVOLVE OCPB cycle: Open -> Content -> Payoff -> Bridge. Every sentence earns the next.
 
+${ZAK_QUALITY_GATES}
+
 PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}
 TARGET LANGUAGE: ${project.targetLanguage}`,
@@ -275,7 +282,7 @@ CUSTOMER LANGUAGE & VOICE (Gate 2):
 ${g2 ? JSON.stringify(g2, null, 2).slice(0, 3000) : 'Not available'}
 
 HOOKS & COPY ARSENAL (Gate 4):
-${g4 ? JSON.stringify(g4, null, 2).slice(0, 2000) : 'Not available'}
+${g4 ? JSON.stringify(g4, null, 2).slice(0, 4000) : 'Not available'}
 
 VOICE PROFILE:
 ${brandDNA?.voice_profile ? JSON.stringify(brandDNA.voice_profile, null, 2) : 'Not available'}
@@ -319,6 +326,9 @@ For each primary body copy, write 2 variations:
 - Primary copies: 125-250 words STRICT
 - Variation A: 80-125 words STRICT
 - Variation B: 125-250 words, different emotional entry
+- EVERY body copy must pass ZAK Quality Gates: 4+ specificity types, BS detector clean, 6th grade reading level, show-don't-tell audit, correct copy format for awareness level
+- Include at least ONE damaging admission across the 3 primary body copies
+- Select copy format (PAS/AIDA/SPS/4P/BAB/Problem Stack) based on target awareness level
 
 Output valid JSON:
 {
@@ -338,10 +348,16 @@ Output valid JSON:
         "payoff": "lines 7-10",
         "bridge": "final CTA line"
       },
-      "techniques_used": ["bucket brigade", "yes train", "specificity", "..."],
+      "techniques_used": ["bucket brigade", "yes train", "specificity", "damaging admission", "..."],
       "emotional_entry": "",
       "emotional_exit": "",
-      "cta_text": ""
+      "cta_text": "",
+      "specificity_audit": {
+        "types_present": ["which of the 7 Types of Specificity are used"],
+        "count": 0,
+        "show_dont_tell_conversions": ["each TELL→SHOW conversion made"]
+      },
+      "copy_format_used": "PAS|AIDA|SPS|4P|BAB|Problem Stack"
     },
     {
       "id": "bc-1-var-a",
@@ -567,10 +583,10 @@ CRITICAL RULES:
 
       return `Produce the complete ad package.
 
-${g5 ? `=== ADVERTORIAL (Gate 5) ===\n${JSON.stringify(g5).slice(0, 3000)}` : ''}
-${g4 ? `\n=== COPY ARSENAL (Gate 4) ===\n${JSON.stringify(g4).slice(0, 3000)}` : ''}
-${g3 ? `\n=== MECHANISM (Gate 3) ===\n${JSON.stringify(g3).slice(0, 2000)}` : ''}
-${g2 ? `\n=== AVATAR DATA (Gate 2) ===\n${JSON.stringify(g2).slice(0, 3000)}` : ''}
+${g5 ? `=== ADVERTORIAL (Gate 5) ===\n${JSON.stringify(g5).slice(0, 5000)}` : ''}
+${g4 ? `\n=== COPY ARSENAL (Gate 4) ===\n${JSON.stringify(g4).slice(0, 5000)}` : ''}
+${g3 ? `\n=== MECHANISM (Gate 3) ===\n${JSON.stringify(g3).slice(0, 4000)}` : ''}
+${g2 ? `\n=== AVATAR DATA (Gate 2) ===\n${JSON.stringify(g2).slice(0, 4000)}` : ''}
 
 Product: ${project.productDescription}`;
     }
@@ -694,17 +710,21 @@ RULES:
 
   reviewerPrompt: `You are a Meta Ads performance reviewer with $50M+ in tested ad spend. Score with the eye of someone whose money is on the line.
 
+${EVOLVE_COHERENCE_CHAIN}
+
+${EVOLVE_EXECUTION_FRAMEWORK}
+
 DIMENSIONS (each /10, total /100, threshold >=75%):
 1. Concept Variety: 5 genuinely different concepts? Span 3+ sub-avatars? Different angles? Different emotional territories?
-2. Concept Quality: Each has clear psychological mechanism? Would a creative team know EXACTLY what to produce?
-3. Body Copy Power: OCPB cycle executed? Hook stops scroll? Content creates identification? Payoff builds curiosity? Bridge has clear CTA?
-4. Body Copy Craft: Customer language used? Specificity over generality? Show-don't-tell? Techniques named and visible?
+2. Concept Quality: Each has clear psychological mechanism from ZAK's 8 frameworks (System 1/2, COM-B, SDT, Narrative Transportation, Processing Fluency, Loss Aversion, Villain Externalization, Future Pacing)? Would a creative team know EXACTLY what to produce? OCPB cycle applied? Copy format (PAS/AIDA/SPS/4P/BAB/Problem Stack) selected per awareness level?
+3. Body Copy Power: Hook stops scroll (3 Hook Requirements met)? Content creates identification? Payoff builds curiosity? Bridge has clear CTA? Awareness levels NOT skipped? Damaging admission present in at least 1 primary body copy?
+4. Body Copy Craft: Customer language used? 4+ of 7 Types of Specificity per body copy? SHOW don't TELL audit done? Law of Unique Numbers applied? 6th grade reading level? BS detector clean (no weasel words, fake urgency, unsubstantiated claims)?
 5. Headline Effectiveness: Under 40 chars? Curiosity headlines create real open loops? Benefit headlines state specific benefits? Complement (don't repeat) body copy?
 6. Video Script Modularity: 3 hooks x 3 bridges x 1 hold x 1 CTA structure? Each hook works with any bridge? Each bridge works with the hold?
 7. Video Script Quality: Scripts sound like real scenarios? Pain script is visceral? Transformation script is compelling? Timing realistic?
 8. Natural Speech Authenticity: Sounds like real person talking? Not reading a script? Appropriate filler words? Emotional reactions?
-9. Linkage & Organization: Concepts -> body copies -> headlines clearly linked? Cross-references intact? No orphaned pieces?
-10. Campaign Readiness: Could a media buyer launch with this package TODAY? All pieces production-ready? Split test plan actionable?
+9. 7 Reasons Ads Fail Check: No copy lacking emotional impact? Curiosity created? Suspense maintained? Not too complex? Show don't tell? Objections addressed via OCPB? Awareness transitions complete?
+10. Coherence Lock: Mechanism name EXACT from Gate 3? Root cause EXACT? Belief error EXACT? Sub-avatar names EXACT from Gate 2? Emotional intensity NOT diluted? Desire elevation NOT dropped?
 
 RED FLAGS (auto-deduct):
 - All concepts feel like same concept reworded (max 3/10 on dimension 1)

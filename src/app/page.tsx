@@ -1,10 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Project } from '@/lib/types';
 import { getAllProjects, saveProject, deleteProject } from '@/lib/store/db';
 import { createProject, getProgressPercentage, getCompletedGateCount, ALL_GATES } from '@/lib/store/project-utils';
+import { fetchBootstrap } from '@/lib/store/serverMirror';
 import Link from 'next/link';
+
+// NOTE: Client-side NEXT_PUBLIC_APP_PASSWORD and the hardcoded
+// APP_USERS import are GONE. Everything goes through server
+// endpoints: the password is checked by /api/auth/login and the
+// user list comes from /api/auth/users. Sessions are HttpOnly
+// cookies managed entirely server-side.
+
+type PickerUser = { name: string; role: 'admin' | 'user' | 'blocked' };
 
 const LANGUAGES = [
   { code: 'en-US', label: 'English (US)', market: 'United States' },
@@ -28,63 +37,234 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+
+  // --- Auth state (all server-side; no localStorage for auth) ---
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [appUser, setAppUser] = useState<string | null>(null);
+  const [isAdminSession, setIsAdminSession] = useState(false);
+
+  // Two-step login: (1) password, (2) pick-user. Password is held in
+  // state *only* until the picker submit, then cleared.
+  const [pendingPassword, setPendingPassword] = useState<string | null>(null);
   const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [pickerUsers, setPickerUsers] = useState<PickerUser[]>([]);
+  const [loggingIn, setLoggingIn] = useState(false);
 
-  useEffect(() => {
-    const auth = localStorage.getItem('pawen-auth');
-    if (auth === 'true') {
-      setAuthenticated(true);
-      loadProjects();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  async function loadProjects() {
+  const loadProjects = useCallback(async () => {
     setLoading(true);
+    // Pull server-side mirror first so a fresh device / cleared
+    // browser can restore the user's work. Any rows on the server
+    // that aren't in IndexedDB get written back locally. Local-only
+    // rows are preserved (and will mirror up on their next save).
+    try {
+      const boot = await fetchBootstrap();
+      if (boot && boot.projects.length > 0) {
+        const local = await getAllProjects();
+        const localIds = new Set(local.map((p) => p.id));
+        for (const p of boot.projects) {
+          if (p && typeof p === 'object' && 'id' in p && !localIds.has(String(p.id))) {
+            await saveProject(p as Project);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[dashboard] bootstrap restore skipped:', err);
+    }
     const all = await getAllProjects();
     setProjects(all);
     setLoading(false);
-  }
+  }, []);
 
-  function handleLogin(e: React.FormEvent) {
+  // On mount: ask the server whether we have a valid session cookie.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        if (!res.ok) {
+          if (!cancelled) { setSessionChecked(true); setLoading(false); }
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.authenticated && data.user?.name) {
+          setAppUser(data.user.name);
+          setIsAdminSession(data.user.role === 'admin');
+          // Keep localStorage.app-user in sync ONLY as a display hint
+          // for legacy pages (contribute, curate, tools). The server
+          // is the authoritative identity source via the session cookie.
+          try { localStorage.setItem('app-user', data.user.name); } catch {}
+          await loadProjects();
+        } else {
+          try { localStorage.removeItem('app-auth'); } catch {}
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
+      } finally {
+        if (!cancelled) setSessionChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loadProjects]);
+
+  // Step 1: user enters password. We don't validate it yet — we fetch
+  // the user list from the server (which is gated behind the same
+  // APP_PASSWORD server-side) and move to the picker. The real password
+  // check happens on picker submit via /api/auth/login.
+  async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password === (process.env.NEXT_PUBLIC_PAWEN_PASSWORD || 'pawen2026')) {
-      localStorage.setItem('pawen-auth', 'true');
-      setAuthenticated(true);
-      loadProjects();
-    } else {
-      setAuthError(true);
+    if (!password) return;
+    setAuthError(null);
+    setLoggingIn(true);
+    try {
+      // Fetch the user list. This endpoint does NOT require a session,
+      // but the login endpoint will reject if the password is wrong.
+      const res = await fetch('/api/auth/users', { credentials: 'same-origin' });
+      if (!res.ok) {
+        setAuthError('Could not load user list — is the server up?');
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok || !Array.isArray(data.users) || data.users.length === 0) {
+        setAuthError('No users available — contact admin');
+        return;
+      }
+      setPickerUsers(data.users);
+      setPendingPassword(password);
+      setPassword('');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setLoggingIn(false);
     }
   }
 
-  if (!authenticated) {
+  // Step 2: user picks their name. We POST password + user to /api/auth/login.
+  // On success the server sets an HttpOnly cookie and we proceed.
+  async function handlePickUser(u: PickerUser) {
+    if (!pendingPassword) return;
+    setLoggingIn(true);
+    setAuthError(null);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ password: pendingPassword, user: u.name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        // Wrong password / disabled user — bounce back to step 1
+        setAuthError(data.message || 'Login failed');
+        setPendingPassword(null);
+        setPickerUsers([]);
+        return;
+      }
+      setAppUser(data.user.name);
+      setIsAdminSession(data.user.role === 'admin');
+      // Display hint for legacy pages — server cookie is authoritative
+      try { localStorage.setItem('app-user', data.user.name); } catch {}
+      setPendingPassword(null);
+      setPickerUsers([]);
+      await loadProjects();
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Network error');
+      setPendingPassword(null);
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch {
+      // non-fatal; cookie gets cleared either way
+    }
+    setAppUser(null);
+    setIsAdminSession(false);
+    setProjects([]);
+    try {
+      localStorage.removeItem('app-user');
+      localStorage.removeItem('app-auth'); // legacy bypass key — wipe on every logout
+    } catch {}
+  }
+
+  // Still checking /api/auth/me on mount — show nothing to avoid flash.
+  if (!sessionChecked) {
+    return <div className="min-h-screen bg-bg-primary" />;
+  }
+
+  // Step 1 — Password entry
+  if (!appUser && !pendingPassword) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg-primary">
         <div className="bg-bg-card border border-border rounded-xl p-8 w-full max-w-sm">
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-accent-orange">🐾 Pawen</h1>
-            <p className="text-text-secondary text-sm mt-1">Command Center v4.0</p>
+            <h1 className="text-2xl font-bold text-accent-orange">Pawen Command Center</h1>
+            <p className="text-text-secondary text-sm mt-1">Private beta</p>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
             <input
               type="password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setAuthError(false); }}
+              onChange={(e) => { setPassword(e.target.value); setAuthError(null); }}
               placeholder="Password"
               className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-orange"
               autoFocus
             />
-            {authError && <p className="text-error text-sm">Wrong password</p>}
+            {authError && <p className="text-error text-sm">{authError}</p>}
             <button
               type="submit"
-              className="w-full py-3 bg-accent-orange text-white font-semibold rounded-lg hover:bg-accent-orange-hover"
+              disabled={loggingIn || !password}
+              className="w-full py-3 bg-accent-orange text-white font-semibold rounded-lg hover:bg-accent-orange-hover disabled:opacity-50"
             >
-              Enter
+              {loggingIn ? 'Loading…' : 'Next'}
             </button>
           </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 2 — User picker
+  if (!appUser && pendingPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-primary p-4">
+        <div className="bg-bg-card border border-border rounded-xl p-8 w-full max-w-md">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-accent-orange">Who are you?</h1>
+            <p className="text-text-secondary text-sm mt-1">
+              Pick your tag — the server will verify the password when you click.
+            </p>
+          </div>
+          {authError && <p className="text-error text-sm text-center mb-3">{authError}</p>}
+          <div className="grid grid-cols-3 gap-2">
+            {pickerUsers.map((u) => (
+              <button
+                key={u.name}
+                onClick={() => handlePickUser(u)}
+                disabled={loggingIn}
+                className={`py-2.5 rounded-lg text-sm font-medium border text-text-primary hover:border-accent-orange disabled:opacity-50 ${
+                  u.role === 'admin' ? 'border-accent-orange/40' : 'border-border'
+                }`}
+              >
+                {u.name}
+                {u.role === 'admin' && <span className="ml-1 text-[9px] text-accent-orange">★</span>}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => { setPendingPassword(null); setPickerUsers([]); setAuthError(null); }}
+            className="w-full mt-4 text-text-muted text-xs hover:text-text-secondary"
+          >
+            ← back
+          </button>
         </div>
       </div>
     );
@@ -95,13 +275,33 @@ export default function Dashboard() {
       <header className="border-b border-border bg-bg-card">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-accent-orange">🐾 Pawen Command Center</h1>
+            <h1 className="text-xl font-bold text-accent-orange">Pawen Command Center</h1>
             <p className="text-text-muted text-xs">Multi-agent AI pipeline — Any product, any language, any niche</p>
           </div>
           <div className="flex items-center gap-3">
+            {appUser && (
+              <span className={`px-3 py-1 text-xs rounded-md border ${
+                isAdminSession
+                  ? 'bg-accent-orange/10 border-accent-orange/40 text-accent-orange'
+                  : 'bg-bg-primary border-border text-text-secondary'
+              }`}>
+                {appUser}{isAdminSession && ' ★'}
+              </span>
+            )}
             <Link href="/agents" className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-sm">
               Agent Team
             </Link>
+            <Link href="/tools" className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-sm">
+              Tools
+            </Link>
+            <Link href="/contribute" className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-sm">
+              Contribute
+            </Link>
+            {isAdminSession && (
+              <Link href="/admin" className="px-4 py-2 border border-accent-orange/40 bg-accent-orange/10 rounded-lg text-accent-orange hover:bg-accent-orange/20 text-sm">
+                God Panel
+              </Link>
+            )}
             <Link href="/training" className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-sm">
               Training
             </Link>
@@ -110,6 +310,13 @@ export default function Dashboard() {
               className="px-4 py-2 bg-accent-orange text-white font-semibold rounded-lg hover:bg-accent-orange-hover text-sm"
             >
               + New Project
+            </button>
+            <button
+              onClick={handleLogout}
+              className="px-3 py-2 border border-border rounded-lg text-text-muted hover:text-error hover:border-error/50 text-sm"
+              title="Log out"
+            >
+              Logout
             </button>
           </div>
         </div>
@@ -174,7 +381,12 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
           <h3 className="font-semibold text-text-primary truncate group-hover:text-accent-orange">
             {project.name}
           </h3>
-          <p className="text-text-muted text-xs mt-1 truncate">{project.productUrl}</p>
+          <p className="text-text-muted text-xs mt-1 truncate">
+            {project.coreAvatarInput?.niche ||
+              project.coreAvatarInput?.surface_desire ||
+              project.productUrl ||
+              'No avatar yet'}
+          </p>
         </div>
         <button
           onClick={(e) => {
@@ -207,15 +419,13 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
 
 function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate: (project: Project) => void }) {
   const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [description, setDescription] = useState('');
   const [langIdx, setLangIdx] = useState(0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !url.trim()) return;
+    if (!name.trim()) return;
     const lang = LANGUAGES[langIdx];
-    const project = createProject(name.trim(), url.trim(), description.trim(), lang.code, lang.market);
+    const project = createProject(name.trim(), lang.code, lang.market);
     onCreate(project);
   }
 
@@ -227,41 +437,24 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <p className="text-xs text-text-muted">
+            The pipeline starts from a <span className="text-text-primary font-medium">Core Avatar</span> in Gate 1 —
+            no need to fill product info here. You&apos;ll define surface desire, niche, product, language and market on the next screen.
+          </p>
           <div>
             <label className="block text-text-secondary text-sm mb-1.5">Project Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Dog Dental Probiotic — Spain"
+              placeholder="e.g., Sleep Restoration — France"
               className="w-full px-4 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-orange text-sm"
               autoFocus
               required
             />
           </div>
           <div>
-            <label className="block text-text-secondary text-sm mb-1.5">Product URL</label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://alibaba.com/... or https://amazon.com/..."
-              className="w-full px-4 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-orange text-sm"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-text-secondary text-sm mb-1.5">Product Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of the product, its benefits, target audience..."
-              rows={3}
-              className="w-full px-4 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-orange text-sm resize-none"
-            />
-          </div>
-          <div>
-            <label className="block text-text-secondary text-sm mb-1.5">Target Language & Market</label>
+            <label className="block text-text-secondary text-sm mb-1.5">Default Target Language & Market</label>
             <select
               value={langIdx}
               onChange={(e) => setLangIdx(Number(e.target.value))}
@@ -271,6 +464,7 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
                 <option key={lang.code} value={i}>{lang.label} — {lang.market}</option>
               ))}
             </select>
+            <p className="text-[11px] text-text-muted mt-1">You can override this in the Gate 1 Core Avatar form.</p>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-sm">

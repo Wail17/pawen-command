@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { ReviewResult, CongruenceResult } from '@/lib/types';
 
 export function ReviewPanel({ review }: { review: ReviewResult | null }) {
@@ -59,12 +60,73 @@ export function ReviewPanel({ review }: { review: ReviewResult | null }) {
   );
 }
 
-export function CongruencePanel({ congruence }: { congruence: CongruenceResult | null }) {
+export function CongruencePanel({
+  congruence,
+  hasCongruenceCheck,
+  brandDNAStatus,
+  projectId,
+}: {
+  congruence: CongruenceResult | null;
+  hasCongruenceCheck?: boolean;
+  brandDNAStatus?: 'missing' | 'unlocked' | 'locked';
+  projectId?: string;
+}) {
   if (!congruence) {
+    // Gate doesn't have a congruence check at all (gates 1-3)
+    if (hasCongruenceCheck === false) {
+      return (
+        <div className="bg-bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-text-secondary mb-2">Congruence Check</h3>
+          <p className="text-text-muted text-xs">
+            Not applicable — congruence is checked from Gate 4 onward, once Brand DNA is locked.
+          </p>
+        </div>
+      );
+    }
+
+    // Gate supports congruence but Brand DNA isn't locked yet
+    if (brandDNAStatus === 'missing') {
+      return (
+        <div className="bg-bg-card border border-warning/40 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-warning mb-2">Congruence Check — Brand DNA required</h3>
+          <p className="text-text-muted text-xs mb-3">
+            Compile your Brand DNA first. It&apos;s the single source of truth every downstream gate is measured against.
+          </p>
+          {projectId && (
+            <Link
+              href={`/project/${projectId}/brand-dna`}
+              className="inline-block px-3 py-1.5 bg-accent-orange text-white text-xs font-semibold rounded-lg hover:bg-accent-orange-hover"
+            >
+              Compile Brand DNA →
+            </Link>
+          )}
+        </div>
+      );
+    }
+    if (brandDNAStatus === 'unlocked') {
+      return (
+        <div className="bg-bg-card border border-warning/40 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-warning mb-2">Congruence Check — Lock Brand DNA</h3>
+          <p className="text-text-muted text-xs mb-3">
+            Brand DNA is compiled but not locked. Lock it to enable the congruence check on this gate.
+          </p>
+          {projectId && (
+            <Link
+              href={`/project/${projectId}/brand-dna`}
+              className="inline-block px-3 py-1.5 bg-accent-orange text-white text-xs font-semibold rounded-lg hover:bg-accent-orange-hover"
+            >
+              🔒 Lock Brand DNA →
+            </Link>
+          )}
+        </div>
+      );
+    }
+
+    // Fallback (should be rare — DNA locked but no congruence result yet, e.g. pre-regen)
     return (
       <div className="bg-bg-card border border-border rounded-xl p-4">
         <h3 className="text-sm font-semibold text-text-secondary mb-2">Congruence Check</h3>
-        <p className="text-text-muted text-xs">N/A (pre-DNA)</p>
+        <p className="text-text-muted text-xs">Not yet computed for this output. Re-generate to run the check.</p>
       </div>
     );
   }

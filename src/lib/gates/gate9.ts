@@ -6,6 +6,8 @@
 // ============================================================
 
 import { GateConfigDef } from './types';
+import { EVOLVE_TESTING_SCALING, EVOLVE_PLANNING_FRAMEWORK, EVOLVE_COHERENCE_CHAIN, EVOLVE_FEEDBACK_LOOP } from './evolveFrameworks';
+import { ZAK_SCALING_ADVANCED } from './zakFrameworks';
 
 const gate9: GateConfigDef = {
   id: 'gate9',
@@ -28,116 +30,143 @@ TARGET LANGUAGE: ${project.targetLanguage}`,
       userMessage: (project, previousOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
+        const g4 = previousOutputs['gate4'] as Record<string, unknown> | undefined;
+        const g6 = previousOutputs['gate6'] as Record<string, unknown> | undefined;
+        const g7 = previousOutputs['gate7'] as Record<string, unknown> | undefined;
 
         return `PRODUCT: ${project.productDescription}
 
 ${g2 ? `SUB-AVATARS (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 4000)}` : ''}
 
-${g1 ? `PRODUCT INTEL (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 2000)}` : ''}
+${g1 ? `PRODUCT INTEL (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 4000)}` : ''}
 
-## MISSION: Design the complete Meta Ads campaign structure
+${g4 ? `TOP HOOKS (Gate 4):\n${JSON.stringify(g4, null, 2).slice(0, 4000)}` : ''}
 
-### 1. CAMPAIGN NAMING (EVOLVE 3-Level System)
-Use the 3-level naming convention:
-- Level 1 (Campaign): Campaign_Audience_Concept
-- Level 2 (Ad Set): More detailed targeting/angle info
-- Level 3 (Ad): Specific creative identifier
+${g6 ? `AD CONCEPTS & HEADLINES (Gate 6):\n${JSON.stringify(g6, null, 2).slice(0, 4000)}` : ''}
 
-### 2. AD SET STRUCTURE
-Design 1 CBO campaign per sub-avatar with multiple ad sets:
-- Winners/Champions ad set (for proven creatives)
-- Testing ad sets by angle (3-5 ads per angle)
-- Separate ad sets for video vs image creatives
-- NEVER mix video and image in the same ad set
+${g7 ? `CREATIVE BRIEFS (Gate 7 — static ad presets & briefs):\n${JSON.stringify(g7, null, 2).slice(0, 5000)}` : ''}
 
-### 3. BUDGET ALLOCATION (ZAK 50-Conversion Rule)
-- Meta needs 50 conversions per ad set per week for stable optimization
-- Minimum daily spend per ad set = CPA x 3
-- Allocate budget proportionally to sub-avatar priority (launch_order from Gate 2)
-- Starting budget recommendation based on market and CPA estimate
+${EVOLVE_TESTING_SCALING}
 
-### 4. AUDIENCE TARGETING per Sub-Avatar
-- Broad targeting as default (let Meta optimize)
-- Interest-based targeting only for initial testing
-- Lookalike audiences for scaling phase
-- Geographic targeting based on target market
-- Age/gender only if sub-avatar data strongly supports restriction
+## MISSION: Design the COMPLETE 5-Campaign Meta Ads Account Structure (EVOLVE 2026)
 
-### 5. PIXEL / CONVERSION SETUP
-- Recommended conversion event (Purchase, AddToCart, Lead)
-- Pixel event recommendations
-- Conversion API setup notes
-- Attribution window recommendation (7-day click, 1-day view)
+You MUST design ALL 5 campaigns as described in the EVOLVE framework above:
+1. EAM MAIN CBO CAMPAIGN — Champions Ad Set + DCT ad sets (3-2-2 structure) + Page Test ad sets
+2. ABO TESTING & SCALING CAMPAIGN — Breakthrough/Spend Winner/KPI Winner ad sets + Hard Exclusions + 1-Day Click
+3. ZOMBIE/GRAVEYARD CAMPAIGN — CBO with cost cap (20% below CPA target), ALL losing ads dumped here
+4. RAW CONTENT CAMPAIGN — UGC, product seeding, flexible ads
+5. PROMO CAMPAIGN — Broad + Warm 60 + Hot 90 (only for real limited promos)
 
-### 6. CAMPAIGN OBJECTIVE SELECTION
-- Recommend campaign objective with reasoning
-- When to use Sales vs Leads vs Traffic
-- Optimization event selection
+### NAMING CONVENTIONS (EVOLVE)
+- Campaign: [Agency] // [Type] // [Objective] // [CBO/ABO]
+- Ad Set: [DCT# + name] // [Country] // [Gender] // [Age] // [Audiences]
+- Ad: [DCT#] // [Ad name] // [Variable] // [LP] // [Copy+Headline variant]
+
+### BUDGET ALLOCATION
+- 50-Conversion Rule: (target_CPA × 50) / 7 = minimum daily budget per ad set
+- Breakeven ROAS = 1 / Gross Profit Margin
+- Scaling ROAS = Breakeven + 1 point
+
+### RESULTS CLASSIFICATION (for ad set management)
+- BREAKTHROUGH: Sucks up spend + hits KPI + allows SCALING (the holy grail)
+- SPEND WINNER: Sucks up spend but does NOT hit KPI (maintains level)
+- KPI WINNER: Hits KPI but does not pull significant spend
+- LOSER: Neither KPI nor spend → moves to Zombie/Graveyard
 
 Output valid JSON wrapped in \`\`\`json code blocks:
 {
   "campaign_structure": {
+    "one_campaign_philosophy": "explanation of why ONE CBO campaign does everything with 100% BROAD targeting",
     "campaigns": [
       {
-        "name": "campaign name using EVOLVE naming",
-        "sub_avatar_id": "sa-1",
-        "sub_avatar_name": "",
-        "location": "${project.targetMarket}",
-        "budget_type": "CBO",
+        "campaign_number": 1,
+        "name": "campaign name using EVOLVE naming template",
+        "type": "EAM_MAIN|ABO_TESTING|ZOMBIE|RAW_CONTENT|PROMO",
+        "budget_type": "CBO|ABO",
         "objective": "Sales|Leads|Traffic",
         "objective_reasoning": "",
         "daily_budget": 0,
         "budget_reasoning": "",
+        "cost_cap": null,
         "ad_sets": [
           {
             "name": "ad set name using EVOLVE naming",
-            "type": "winners|testing|angle_test",
-            "focus": "description of what this ad set tests",
-            "format": "video|image",
+            "type": "champions|dct_test|page_test|breakthrough|spend_winner|kpi_winner|hard_exclusion|1day_click|broad|warm60|hot90",
+            "focus": "description of what this ad set does",
+            "format": "video|image|mixed",
+            "dct_structure": "3 ads, 2 body copies, 2 headlines (3-2-2) if applicable",
             "targeting": {
-              "type": "broad|interest|lookalike",
-              "details": "",
+              "type": "broad|warm|hot",
+              "details": "100% BROAD for main, specific for promo",
               "age_range": "",
               "gender": ""
             },
+            "budget_allocation": "percentage of campaign budget",
             "ads": ["ad names/references"]
           }
         ]
       }
     ],
-    "total_campaigns": 0,
+    "total_campaigns": 5,
     "total_ad_sets": 0,
+    "results_classification": {
+      "breakthrough": "definition + what to do with these ads",
+      "spend_winner": "definition + what to do",
+      "kpi_winner": "definition + what to do",
+      "loser": "definition + moves to Zombie/Graveyard"
+    },
     "naming_convention_applied": {
-      "level_1_campaign": "template",
-      "level_2_adset": "template",
-      "level_3_ad": "template"
+      "campaign_template": "[Agency] // [Type] // [Objective] // [CBO/ABO]",
+      "adset_template": "[DCT# + name] // [Country] // [Gender] // [Age] // [Audiences]",
+      "ad_template": "[DCT#] // [Ad name] // [Variable] // [LP] // [Copy+Headline variant]"
     }
   },
   "budget_plan": {
-    "fifty_conversion_rule": "calculation showing how 50-conv rule applies",
+    "fifty_conversion_rule": {
+      "formula": "(target_CPA × 50) / 7",
+      "calculated_minimum_daily": 0,
+      "target_cpa": 0
+    },
+    "breakeven_roas": {
+      "formula": "1 / Gross Profit Margin",
+      "gross_profit_margin": 0,
+      "breakeven": 0,
+      "scaling_roas": 0
+    },
     "estimated_cpa": 0,
-    "minimum_daily_per_adset": 0,
     "recommended_total_daily": 0,
     "phase_1_testing_daily": 0,
     "phase_2_scaling_daily": 0,
+    "zombie_budget": "~10% of total spend",
     "reasoning": ""
   },
   "pixel_setup": {
     "primary_conversion_event": "",
     "secondary_events": [],
     "attribution_window": "7-day click, 1-day view",
+    "attribution_analysis": {
+      "healthy_threshold": ">70% click-based",
+      "view_through_warning": ">50% view-through = inflated numbers",
+      "how_to_check": "Customize Columns > Compare Attribution Settings > 7 day click"
+    },
     "conversion_api": "recommended|optional",
     "setup_notes": ""
+  },
+  "bad_ad_protection": {
+    "ad_set_daily_maximum": "e.g., $500 for new test ad sets (for >$15K/day accounts)",
+    "misclick_detection": "Link Clicks vs Landing Page Views ratio below 90% = misclicks"
   }
 }
 
 RULES:
-- One sub-avatar, one location per campaign
-- Broad targeting by default
-- No minimum spend on ad sets
-- NEVER mix video and image in same ad set
-- Budget must respect CPA x 3 minimum per ad set
-- All naming follows EVOLVE 3-level system`;
+- MUST output ALL 5 campaigns (not just 1 CBO)
+- 100% BROAD targeting on main campaign (no audiences, no retargeting, no lookalikes)
+- The CREATIVE does all the targeting — Meta's algorithm finds the right people
+- Champions Ad Set = winning ads via duplication (keeps FB+IG engagement)
+- Zombie/Graveyard = ALL losing ads, cost cap 20% below CPA target
+- Budget must respect 50-conversion rule
+- All naming follows EVOLVE template with // separators
+- Include Results Classification for ad management decisions`;
       },
     },
 
@@ -153,38 +182,44 @@ TARGET MARKET: ${project.targetMarket}`,
       userMessage: (project, previousOutputs) => {
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
+        const g4 = previousOutputs['gate4'] as Record<string, unknown> | undefined;
+        const g7 = previousOutputs['gate7'] as Record<string, unknown> | undefined;
 
         return `PRODUCT: ${project.productDescription}
 
-${g1 ? `PRODUCT INTEL & SCORECARD (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 2000)}` : ''}
-${g2 ? `SUB-AVATARS & ANGLES (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 2000)}` : ''}
+${g1 ? `PRODUCT INTEL & SCORECARD (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 4000)}` : ''}
+${g2 ? `SUB-AVATARS & ANGLES (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 4000)}` : ''}
+${g4 ? `TOP HOOKS (Gate 4):\n${JSON.stringify(g4, null, 2).slice(0, 4000)}` : ''}
+${g7 ? `CREATIVE BRIEFS PRODUCED (Gate 7 — what ads exist):\n${JSON.stringify(g7, null, 2).slice(0, 4000)}` : ''}
+
+${EVOLVE_PLANNING_FRAMEWORK}
 
 ## MISSION: Design the testing strategy using EVOLVE 3 Methods
 
-### METHOD 1: MARKSMAN (Low Budget / Starting Out)
-- Test 1 variable at a time for HIGH confidence results
-- 1 avatar, 1 angle per test cycle
-- 3-5 creatives per test
+CRITICAL DISTINCTION (from EVOLVE):
+- CONCEPT = internally focused (what WE want to test)
+- ANGLE = externally focused (why the CUSTOMER should buy)
+- Quick test: Does it give the customer a reason to buy? YES = angle. NO = concept.
+
+### METHOD 1: MARKSMAN (find direction)
+- Test 3 DIFFERENT angles in 1 concept. 1 variation each. Use FIRST.
+- 3-2-2 structure: 3 creatives, 2 body copies, 2 headlines per ad set
 - Wait for 50 conversions before making decisions
-- Kill losers fast, scale winners immediately
-- Best for: new products, limited budget, unknown CPA
+- Best for: new products, unknown CPA, finding DIRECTION
 - Confidence level: HIGH (clear causation)
 
-### METHOD 2: SNIPER (Medium Budget / Creative Angles)
-- Test creative angles across 2-3 avatars simultaneously
-- 5-10 creatives per avatar
-- Parallel testing: different hooks, different angles, different formats
+### METHOD 2: SNIPER (exploit direction)
+- Test 3 executions of 1 WINNING angle. Use SECOND.
+- Iterate within the winning angle from Marksman
 - Quick iteration cycles (4-7 days per test)
-- Best for: validated product, moderate budget, need to find winning angles
+- Best for: validated angle, need to find winning EXECUTION
 - Speed: MEDIUM
 
-### METHOD 3: SHOTGUN (High Budget / Rapid Testing)
-- Test multiple avatars x angles x formats simultaneously
-- 15-30 creatives per test cycle
-- Large budget enables rapid learning (more data = faster decisions)
-- Identify super winners fast, kill everything else
-- Best for: proven product, high budget, scaling aggressively
-- Volume: HIGH
+### METHOD 3: SHOTGUN (volume — UGC ONLY)
+- Random ads, ONLY for incoming UGC/creator content
+- NEVER for strategic testing
+- High volume, low structure
+- Best for: incoming creator content only
 
 ## YOUR DELIVERABLE
 
@@ -267,15 +302,35 @@ Output valid JSON wrapped in \`\`\`json code blocks:
     ],
     "variable_priority": [
       { "rank": 1, "variable": "", "reasoning": "" }
-    ]
+    ],
+    "breakthrough_memo_template": {
+      "what": "What are we doing concretely in this ad?",
+      "why": "Why are we making it? What data/insight/research justifies it?",
+      "how": "How are we going to do it? (format, inspiration, style)"
+    },
+    "ad_types": {
+      "ideation": "Idea from YOUR research (Reddit, Amazon, YouTube)",
+      "imitation": "Idea from ANOTHER brand's ad",
+      "iteration": "Idea from YOUR OWN existing ads"
+    },
+    "iteration_chain": "MARKSMAN → find direction → SNIPER → exploit → plateau → back to MARKSMAN",
+    "three_batch_iteration": {
+      "batch_1": "BIG SWING — wildly different angles, hooks, formats. Find DIRECTION.",
+      "batch_2": "MEDIUM SWING — variations within winning angle from Batch 1.",
+      "batch_3": "REFINED EXECUTION — fine-tune the winning variation from Batch 2."
+    },
+    "iteration_priority_order": "Hook > Headline > Benefits > Persona"
   }
 }
 
 RULES:
 - Launch method MUST be justified by product data (scorecard, market sophistication)
 - 50-conversion rule applies to ALL methods
+- MARKSMAN first, SNIPER second, SHOTGUN for UGC only — never reverse
 - Testing sequences must be specific enough for a media buyer to execute day 1
-- Transition triggers must be measurable, not subjective`;
+- Transition triggers must be measurable, not subjective
+- Every ad must have a BREAKTHROUGH MEMO (WHAT/WHY/HOW)
+- Include 3-batch iteration process and iteration priority order`;
       },
     },
 
@@ -299,10 +354,10 @@ TARGET LANGUAGE: ${project.targetLanguage}`,
 
         return `PRODUCT: ${project.productDescription}
 
-${g6 ? `AD SCRIPTS & COPY (Gate 6):\n${JSON.stringify(g6, null, 2).slice(0, 4000)}` : ''}
-${g2 ? `AVATAR DATA (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 3000)}` : ''}
-${g1 ? `PRODUCT INTEL (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 2000)}` : ''}
-${brandDna ? `BRAND DNA:\n${JSON.stringify(brandDna, null, 2).slice(0, 2000)}` : ''}
+${g6 ? `AD SCRIPTS & COPY (Gate 6):\n${JSON.stringify(g6, null, 2).slice(0, 6000)}` : ''}
+${g2 ? `AVATAR DATA (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 4000)}` : ''}
+${g1 ? `PRODUCT INTEL (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 4000)}` : ''}
+${brandDna ? `BRAND DNA:\n${JSON.stringify(brandDna, null, 2).slice(0, 5000)}` : ''}
 
 ## MISSION: Create 2 UGC Creator Briefs
 
@@ -470,8 +525,8 @@ TARGET MARKET: ${project.targetMarket}`,
 
         return `PRODUCT: ${project.productDescription}
 
-${g2 ? `SUB-AVATARS (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 2000)}` : ''}
-${g6 ? `AD SCRIPTS (Gate 6):\n${JSON.stringify(g6, null, 2).slice(0, 2000)}` : ''}
+${g2 ? `SUB-AVATARS (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 4000)}` : ''}
+${g6 ? `AD SCRIPTS (Gate 6):\n${JSON.stringify(g6, null, 2).slice(0, 4000)}` : ''}
 
 ## MISSION: Create EVOLVE 3-Level Naming Conventions
 
@@ -583,7 +638,7 @@ RULES:
       model: 'opus',
       systemPrompt: (project) => `You are a scaling strategist for Meta Ads with $100M+ in managed ad spend. You design scaling playbooks that take campaigns from $100/day to $10,000+/day profitably.
 
-You follow the ZAK 50-Conversion Rule and ZAK Scaling SOP precisely.
+You follow the EVOLVE Scaling Protocol and 50-Conversion Rule precisely.
 
 PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}`,
@@ -591,11 +646,21 @@ TARGET MARKET: ${project.targetMarket}`,
       userMessage: (project, previousOutputs) => {
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
+        const g6 = previousOutputs['gate6'] as Record<string, unknown> | undefined;
+        const g7 = previousOutputs['gate7'] as Record<string, unknown> | undefined;
 
         return `PRODUCT: ${project.productDescription}
 
-${g1 ? `PRODUCT INTEL & SCORECARD (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 2000)}` : ''}
-${g2 ? `SUB-AVATARS (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 2000)}` : ''}
+${g1 ? `PRODUCT INTEL & SCORECARD (Gate 1):\n${JSON.stringify(g1, null, 2).slice(0, 4000)}` : ''}
+${g2 ? `SUB-AVATARS (Gate 2):\n${JSON.stringify(g2, null, 2).slice(0, 4000)}` : ''}
+${g6 ? `AD CONCEPTS & HEADLINES (Gate 6):\n${JSON.stringify(g6, null, 2).slice(0, 4000)}` : ''}
+${g7 ? `CREATIVE BRIEFS PRODUCED (Gate 7):\n${JSON.stringify(g7, null, 2).slice(0, 4000)}` : ''}
+
+${EVOLVE_TESTING_SCALING}
+
+${EVOLVE_FEEDBACK_LOOP}
+
+${ZAK_SCALING_ADVANCED}
 
 ## MISSION: Create the complete Scaling Playbook
 
@@ -758,6 +823,87 @@ Output valid JSON wrapped in \`\`\`json code blocks:
       "reference": "1-day view (LOW trust)",
       "scaling_rule": "Must be 70%+ click-based to scale",
       "calculation": "click_conversions / total_conversions x 100"
+    },
+    "evolve_scaling_protocol": {
+      "entry_trigger": "48-72h of CONSISTENT performance ABOVE target KPI",
+      "standard_increase": "+20%",
+      "aggressive_increase": "Double or +50% (when 50%+ above KPI)",
+      "big_budget_decrease": "15%, 10%, 5% increments for $10K+/day",
+      "small_budget_increase": "More aggressive for <$3K/day",
+      "decrease_trigger": "Below breakeven for 24-48h → decrease -20%",
+      "minimum_spend_action": "Focus OUTSIDE the ad account (new DCTs, funnel check, research)"
+    },
+    "surf_scaling": {
+      "when": "promos/BFCM only",
+      "method": "Scale budget MULTIPLE times per day (every 2-6 hours)",
+      "midnight_reset": "RESET budget to (actual spend / 2) at midnight",
+      "hourly_check_protocol": {
+        "hour_0_6": "Let algorithm warm up, no changes",
+        "hour_6_12": "First check — CPA trending below target? If yes, +20%",
+        "hour_12_18": "Second check — scale up if performing, scale down if not",
+        "hour_18_24": "Final check — prepare for midnight reset",
+        "midnight": "Reset budget = (actual spend / 2)"
+      },
+      "pre_load": "48 hours before surge, increase budget gradually to warm the algorithm",
+      "max_duration": "3-7 day windows ONLY — not sustainable"
+    },
+    "lp_testing_3222": {
+      "framework": "3:2:2:2 Landing Page Testing",
+      "sequence": [
+        "1. Test 3 different HOOKS (above the fold) — highest impact, fastest signal",
+        "2. Winner gets 2 BODY variations (narrative vs. feature list)",
+        "3. Winner gets 2 OFFER variations (pricing, bundles, guarantees)",
+        "4. Winner gets 2 DESIGN variations (layout, colors, imagery)"
+      ],
+      "min_conversions_per_test": 100,
+      "test_method": "Page Test ad sets in main campaign (not external tools)"
+    },
+    "attribution_quality_check": {
+      "formula": "(7-day click purchases / total purchases) × 100",
+      "healthy": ">70% click-based — your ads are driving real clicks",
+      "watch": "50-70% click-based — consider 7-day click only for decisions",
+      "inflated": "<50% click-based — view-through is padding your numbers, use 7-day click only",
+      "red_flag": "If removing view-through makes campaign unprofitable, you don't have a real winner"
+    },
+    "scaling_decision_matrix": [
+      { "performance": "Above KPI 48h+", "action": "Scale +20%", "timeline": "Immediate" },
+      { "performance": "Above KPI 72h+", "action": "Scale +30-50%", "timeline": "Immediate" },
+      { "performance": "At KPI (break-even)", "action": "Hold, test new creatives", "timeline": "1-2 days" },
+      { "performance": "Below KPI 24h", "action": "Hold, monitor", "timeline": "Wait 24h more" },
+      { "performance": "Below KPI 48h+", "action": "Decrease -20%", "timeline": "Immediate" },
+      { "performance": "Below KPI 72h+", "action": "Decrease -40% or pause", "timeline": "Immediate" }
+    ],
+    "seasonal_reactivation": "Re-activate old winning ads at the same time of year — some ads perform at the SAME season year after year",
+    "actions_outside_ad_account": [
+      "1. Launch new DCTs (ALWAYS priority #1)",
+      "2. Double-check the funnel (bugs, errors, out of stock)",
+      "3. Data analysis + feedback loops",
+      "4. Deep research for new avatars and mechanisms",
+      "5. Offer testing (new pricing, bundles)"
+    ],
+    "roller_coaster_fix": {
+      "A": "Target PERMANENT desires, not trends",
+      "B": "Move UP in awareness (unaware/problem aware = most scalable, least competitive)",
+      "C": "Create ads that EDUCATE or ENTERTAIN (or both) — become authority",
+      "D": "Build congruent funnels + irresistible offers"
+    },
+    "feedback_loop": {
+      "rule": "NON-NEGOTIABLE for EVERY ad tested (winner AND loser)",
+      "on_losers": [
+        "1. Pull metrics: % of spend distribution across variations (7-day window)",
+        "2. Identify winning variation: <5%=loser, ~10%=signal, 30-50%=winner, >50%=super winner",
+        "3. Compare variations: what did the winner do differently?",
+        "4. Compare with proven templates",
+        "5. Formulate BROAD learnings (not 'this headline didn't work')",
+        "6. Create action plan: what specific NEW ads?"
+      ],
+      "on_winners": [
+        "1. Play/pause hook frame by frame — what makes first 1-3s captivating?",
+        "2. Identify the DESIRES being triggered (not features)",
+        "3. Analyze hold rate: where do people drop off?",
+        "4. Feed learnings to AI for new variations preserving winning elements"
+      ],
+      "iteration_priority": "Hook > Headline > Benefits > Persona"
     }
   }
 }
@@ -765,9 +911,17 @@ Output valid JSON wrapped in \`\`\`json code blocks:
 RULES:
 - All thresholds must be SPECIFIC numbers, not vague ("if it's not working")
 - Kill rules must be actionable on day 1
-- Budget math must check out (CPA x 3 = minimum daily, 50-conv rule)
+- Budget math must check out (50-conv rule + breakeven ROAS formula)
+- Scaling Protocol entry/exit triggers must be specific (48-72h above KPI)
+- Include EVOLVE scaling amounts (+20% standard, +50%/double aggressive)
+- Include feedback loop process for both winners AND losers
+- Include actions OUTSIDE the ad account when at minimum spend
 - Weekly checklist must be executable by a junior media buyer
-- Scaling decisions must reference attribution quality`;
+- Scaling decisions must reference attribution quality
+- Include ZAK Surge Scaling protocol with hourly check schedule + midnight reset formula
+- Include 3:2:2:2 LP Testing framework (Hooks → Body → Offer → Design)
+- Include attribution quality check with specific thresholds (>70%/50-70%/<50%)
+- Include scaling decision matrix (specific actions per performance tier)`;
       },
     },
   ],
@@ -850,17 +1004,19 @@ Compile into a single unified JSON wrapped in \`\`\`json code blocks:
 
   reviewerPrompt: `You are a senior media buyer reviewer with $100M+ in managed ad spend. Score with brutal honesty based on whether a team could execute this blueprint on day 1.
 
+${EVOLVE_COHERENCE_CHAIN}
+
 DIMENSIONS (each /10, total /100, threshold >=72%):
-1. Campaign Structure: Follows CBO best practices? One avatar/location per campaign? Proper ad set separation? Naming applied?
-2. Budget Math: CPA x 3 calculation present? 50-conversion rule addressed? Budget realistic for market?
-3. Testing Strategy: Method appropriate for product/budget? Test plan specific and week-by-week actionable?
-4. Testing Variables: Priority ranking logical? Transition triggers measurable?
-5. Creator Briefs: Complete 10-section structure? Casual, not corporate? Story-focused? 2 distinct briefs (pain + transformation)?
-6. Naming Conventions: Consistent 3-level system? 5 complete examples? Scalable to 100+ ads?
-7. Scaling Playbook: Attribution rules clear? Budget tiers appropriate? Kill/scale criteria specific numbers, not vague?
-8. Kill Rules: Specific and measurable thresholds? Frequency caps defined? Creative fatigue signals listed?
-9. Cross-Reference Quality: All components reference each other correctly? No contradictions?
-10. Day-1 Readiness: Could a media buyer and creative team launch from this document alone?
+1. 5-Campaign Structure: ALL 5 campaigns present (EAM Main, ABO Testing, Zombie/Graveyard, Raw Content, Promo)? Champions Ad Set + DCT structure? 100% broad targeting on main?
+2. Budget Math: 50-conversion rule calculated? Breakeven ROAS formula present? Zombie budget at ~10%?
+3. Testing Strategy: MARKSMAN→SNIPER→SHOTGUN chain correct? Shotgun restricted to UGC only? 3-2-2 structure applied?
+4. Testing Variables: Breakthrough Memo (WHAT/WHY/HOW) template included? 3-batch iteration process? Iteration priority order?
+5. Creator Briefs: Complete ZAK 10-section structure? Casual, not corporate? Story-focused? 2 distinct briefs (pain + transformation)?
+6. Naming Conventions: Uses EVOLVE // separator template? Campaign/AdSet/Ad naming all covered? 5 complete examples?
+7. Scaling Playbook: EVOLVE scaling protocol (+20% standard, +50% aggressive)? Entry trigger (48-72h above KPI)? Actions outside ad account? ZAK Surge Scaling with hourly check protocol + midnight reset? Scaling decision matrix included?
+8. Results Classification + Attribution: Breakthrough/Spend Winner/KPI Winner/Loser categories defined? Zombie/Graveyard rules? Attribution quality check (>70%/50-70%/<50% thresholds)? Red flag for view-through dependency?
+9. LP Testing + Feedback Loop: 3:2:2:2 LP Testing framework (Hooks→Body→Offer→Design) with min 100 conversions? Winner AND loser analysis process? Iteration priority (Hook > Headline > Benefits > Persona)?
+10. Coherence: Does the blueprint use the EXACT mechanism name, sub-avatar names, and angles from upstream gates? No renamed/diluted terms?
 
 Respond in valid JSON:
 \`\`\`json

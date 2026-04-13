@@ -11,6 +11,7 @@ import { MODEL_REGISTRY } from '../ai/providers';
 import { getKnowledgeForGate, getTrainingChunksForGate } from '../store/db';
 import { getPersonaForSubAgent, buildPersonaPrompt, buildKnowledgePrompt, buildMemoryPrompt, buildTrainingPrompt } from './personas';
 import { getRelevantMemories } from './memory';
+import { buildGoldOutputsPrompt } from '../learning/inject';
 
 // Model mapping for sub-agents
 const SUB_AGENT_MODELS = {
@@ -59,10 +60,125 @@ async function callSubAgent(
     ) + '\n\n';
   }
 
+  // Inject gold examples (fewer for sub-agents — they're specialists)
+  const goldBlock = await buildGoldOutputsPrompt({
+    gateId,
+    niche: project.niche || '',
+    funnel: project.selectedFunnel || 'any',
+    maxExamples: 2,
+  });
+  if (goldBlock) {
+    enrichedSystemPrompt += goldBlock + '\n\n';
+  }
+
+  // Inject Brand DNA constraints — sub-agents MUST see mechanism lock,
+  // forbidden words, voice profile, and conditional-use rules.
+  // Without this, sub-agents write copy that violates Brand DNA and the
+  // congruence check catches it too late (after lead compilation).
+  const brandDNA = project.brandDNA;
+  if (brandDNA?.locked) {
+    const neverUse = brandDNA.customer_language?.never_use || [];
+    const conditionalUse = brandDNA.customer_language?.conditional_use || [];
+    const alwaysUse = brandDNA.customer_language?.always_use || [];
+    const phrasesToAvoid = brandDNA.voice_profile?.phrases_to_avoid || [];
+    const proofPoints = brandDNA.locked_terms?.key_proof_points || [];
+
+    enrichedSystemPrompt += `=== BRAND DNA (DO NOT DEVIATE) ===
+MECHANISM: "${brandDNA.locked_terms?.mechanism_name || ''}" — use this EXACT name
+ROOT CAUSE: "${brandDNA.locked_terms?.root_cause_one_sentence || ''}" — use this EXACT framing
+BELIEF ERROR: "${brandDNA.locked_terms?.belief_error || ''}"
+PRODUCT DESCRIPTOR: "${brandDNA.locked_terms?.product_descriptor || ''}"
+${neverUse.length ? `FORBIDDEN WORDS: ${neverUse.join(', ')}` : ''}
+${phrasesToAvoid.length ? `PHRASES TO AVOID: ${phrasesToAvoid.join(', ')}` : ''}
+${conditionalUse.length ? `CONDITIONAL USE: ${conditionalUse.map(c => `"${c.term}" (only in: ${c.allowed_in?.join(', ') || 'ask'})`).join('; ')}` : ''}
+${alwaysUse.length ? `ALWAYS USE: ${alwaysUse.join(', ')}` : ''}
+VOICE: ${brandDNA.voice_profile?.emotional_tone || ''} | ${brandDNA.voice_profile?.sentence_style || ''} | formality ${brandDNA.voice_profile?.formality_level ?? 'N/A'}/10
+${proofPoints.length ? `PROOF POINTS: ${proofPoints.slice(0, 5).join(' | ')}` : ''}
+${brandDNA.customer_language?.pain_quotes?.length ? `KEY PAIN QUOTES:\n${brandDNA.customer_language.pain_quotes.slice(0, 5).map(q => `  "${q.quote}" (${q.emotion})`).join('\n')}` : ''}
+RULES: Use mechanism name EXACTLY. Never use forbidden words. Only approved customer language.
+=== END BRAND DNA ===\n\n`;
+  }
+
+  // Inject funnel + sub-avatar strategic context so every sub-agent
+  // writes copy calibrated to the chosen awareness level & persona.
+  if (project.selectedFunnel || project.selectedSubAvatarId) {
+    const parts: string[] = ['=== STRATEGIC CONTEXT ==='];
+    if (project.selectedFunnel) {
+      const funnelDesc: Record<string, string> = {
+        full_unaware: "Prospect doesn't know they have a problem. Disrupt, educate, create the 'aha' moment.",
+        problem_aware: "Prospect feels the pain but hasn't searched for solutions. Agitate the wound, then introduce the category.",
+        solution_aware: "Prospect knows solutions exist but doesn't know YOUR product. Differentiate via mechanism and proof.",
+        product_aware: "Prospect knows your product but hasn't decided. Overcome objections, stack proof, urgency.",
+        most_aware: "Ready to buy. Direct response: price, offer, scarcity, bonuses, guarantee.",
+        retargeting: "Already engaged. Reminder ads, social proof, limited-time incentive.",
+      };
+      parts.push(`FUNNEL: ${project.selectedFunnel.toUpperCase().replace(/_/g, ' ')}`);
+      parts.push(`STRATEGY: ${funnelDesc[project.selectedFunnel] ?? ''}`);
+      parts.push('ALL output MUST be calibrated to this awareness level.');
+    }
+    if (project.selectedSubAvatarId && project.avatarRunResult) {
+      const sa = project.avatarRunResult.sub_avatars.find(
+        (s) => s.id === project.selectedSubAvatarId,
+      );
+      if (sa) {
+        parts.push(`FOCUSED SUB-AVATAR: ${sa.name} ("${sa.nickname}")`);
+        if (sa.description) parts.push(`DESCRIPTION: ${sa.description}`);
+        if (sa.dominant_category) parts.push(`CATEGORY: ${sa.dominant_category}`);
+        if (sa.emotional_triggers?.length) parts.push(`TRIGGERS: ${sa.emotional_triggers.join(', ')}`);
+      }
+    }
+    parts.push('=== END STRATEGIC CONTEXT ===\n');
+    enrichedSystemPrompt += parts.join('\n') + '\n';
+  }
+
+  // Inject product intelligence from Shopify so every sub-agent knows
+  // the real product name, price, features, reviews, images.
+  if (project.shopifyData) {
+    const sd = project.shopifyData;
+    const pp: string[] = ['=== PRODUCT INTELLIGENCE ==='];
+    pp.push(`PRODUCT: ${sd.productTitle}`);
+    if (sd.price) {
+      const sym = sd.currency === 'EUR' ? '€' : sd.currency === 'GBP' ? '£' : '$';
+      pp.push(`PRICE: ${sym}${sd.price}${sd.compareAtPrice ? ` (was ${sym}${sd.compareAtPrice})` : ''}`);
+    }
+    if (sd.vendor) pp.push(`BRAND: ${sd.vendor}`);
+    if (sd.productType) pp.push(`TYPE: ${sd.productType}`);
+    if (sd.productFormat) pp.push(`FORMAT: ${sd.productFormat}`);
+    if (sd.variants.length > 1) {
+      pp.push(`VARIANTS: ${sd.variants.map(v => v.title).join(', ')}`);
+    }
+    if (sd.images.length > 0) {
+      pp.push(`IMAGES: ${sd.images.length} product images available`);
+    }
+    if (sd.reviewStats) {
+      pp.push(`REVIEWS: ${sd.reviewStats.totalReviews} reviews, avg ${sd.reviewStats.averageRating}/5`);
+    }
+    if (sd.reviews.length > 0) {
+      const topReviews = sd.reviews.filter(r => r.rating >= 4 && r.body.length > 20).slice(0, 3);
+      if (topReviews.length > 0) {
+        pp.push('TOP REVIEWS:');
+        for (const r of topReviews) {
+          pp.push(`  ★${r.rating} "${r.body.slice(0, 150)}" — ${r.author}`);
+        }
+      }
+    }
+    pp.push('Use REAL product data in your output. Never invent features or claims.');
+    pp.push('=== END PRODUCT INTELLIGENCE ===\n');
+    enrichedSystemPrompt += pp.join('\n') + '\n';
+  }
+
   enrichedSystemPrompt += '=== YOUR CURRENT TASK ===\n';
   enrichedSystemPrompt += subAgent.systemPrompt(project, previousOutputs);
 
-  const userMsg = subAgent.userMessage(project, previousOutputs, peerOutputs);
+  // Compact product reminder at END of user message (recency bias fix)
+  let productPin = '';
+  if (project.shopifyData) {
+    const sd = project.shopifyData;
+    const sym = sd.currency === 'EUR' ? '€' : sd.currency === 'GBP' ? '£' : '$';
+    productPin = `\n\n[PRODUCT: ${sd.productTitle} | ${sym}${sd.price ?? '?'} | ${sd.vendor || ''} | ${sd.reviewStats ? sd.reviewStats.totalReviews + ' reviews ' + sd.reviewStats.averageRating + '/5' : ''}]`;
+  }
+
+  const userMsg = subAgent.userMessage(project, previousOutputs, peerOutputs) + productPin;
 
   const response = await fetch('/api/generate', {
     method: 'POST',

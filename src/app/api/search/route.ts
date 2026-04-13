@@ -4,8 +4,12 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
+  const session = requireSession(req);
+  if (session instanceof Response) return session;
+
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ message: 'TAVILY_API_KEY not configured' }, { status: 500 });

@@ -6,6 +6,8 @@
 // ============================================================
 
 import { GateConfigDef } from './types';
+import { EVOLVE_MARKET_SOPHISTICATION, EVOLVE_COHERENCE_CHAIN } from './evolveFrameworks';
+import { ZAK_MECHANISM_PSYCHOLOGY } from './zakFrameworks';
 
 const gate3: GateConfigDef = {
   id: 'gate3',
@@ -30,18 +32,20 @@ TARGET MARKET: ${project.targetMarket}
 NICHE: ${project.niche || 'Determine from product'}
 
 PRODUCT CONTEXT:
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : project.productDescription}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : project.productDescription}
 
 AVATAR CONTEXT (core problems & failed solutions):
-${g2 ? JSON.stringify(g2, null, 2).slice(0, 2000) : 'Not available — infer from product and market'}`;
+${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : 'Not available — infer from product and market'}`;
       },
 
       userMessage: (project, previousOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
-        const avatarSnippet = g2 ? JSON.stringify(g2, null, 2).slice(0, 1500) : '';
+        const avatarSnippet = g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : '';
 
         return `${avatarSnippet ? `AVATAR DEEP DIVE (summary):\n${avatarSnippet}\n\n` : ''}PRODUCT DESCRIPTION:
 ${project.productDescription}
+
+${EVOLVE_MARKET_SOPHISTICATION}
 
 ## ROOT CAUSE RESEARCH — Phase 1: Raw Discovery
 
@@ -53,6 +57,7 @@ RESEARCH PROTOCOL:
 3. Look for emerging research, overlooked mechanisms, or suppressed findings
 4. Identify the ONE hidden factor that connects all the dots
 5. Find 3-5 supporting sources for the hidden root cause
+6. ASSESS THE MARKET SOPHISTICATION STAGE (see framework above) — this determines which strategic response we need
 
 Output valid JSON:
 
@@ -88,7 +93,24 @@ Output valid JSON:
     "timeline_of_damage": "how the root cause compounds over time — progressive worsening",
     "raw_data_points": [
       "specific statistics, percentages, or data points that support the root cause"
-    ]
+    ],
+    "market_sophistication_assessment": {
+      "stage": 1,
+      "stage_name": "FIRST TO MARKET | COMPETITION | SATURATED | MECHANISMS COPIED | EXHAUSTED",
+      "evidence": ["specific competitor claims, ad copy, or market signals that indicate this stage"],
+      "competitor_mechanisms": ["what mechanisms competitors are currently using"],
+      "customer_skepticism_level": "how educated/skeptical is the market? What do customers compare?",
+      "recommended_strategic_response": "NEW MECHANISM | NEW INFORMATION | NEW IDENTITY",
+      "response_reasoning": "why this response fits the market stage",
+      "new_information_candidates": [
+        {
+          "information": "recent finding or data point (last 12-24 months)",
+          "source": "where this comes from",
+          "not_yet_used_by": "why competitors haven't used this in marketing yet",
+          "reframe_potential": "how this reframes the product understanding"
+        }
+      ]
+    }
   }
 }
 
@@ -119,17 +141,17 @@ TARGET MARKET: ${project.targetMarket}
 NICHE: ${project.niche || 'Determine from product'}
 
 PRODUCT CONTEXT:
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : project.productDescription}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : project.productDescription}
 
 AVATAR CONTEXT:
-${g2 ? JSON.stringify(g2, null, 2).slice(0, 2000) : 'Not available — infer from product and market'}`;
+${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : 'Not available — infer from product and market'}`;
       },
 
       userMessage: (project, previousOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
 
         return `AVATAR RESEARCH:
-${g2 ? JSON.stringify(g2, null, 2).slice(0, 2500) : project.productDescription}
+${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : project.productDescription}
 
 ## FALSE BELIEF IDENTIFICATION
 
@@ -225,10 +247,10 @@ TARGET MARKET: ${project.targetMarket}
 NICHE: ${project.niche || 'Determine from product'}
 
 PRODUCT CONTEXT:
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 1500) : project.productDescription}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : project.productDescription}
 
 AVATAR CONTEXT:
-${g2 ? JSON.stringify(g2, null, 2).slice(0, 1500) : 'Not available'}`;
+${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : 'Not available'}`;
       },
 
       userMessage: (project) => `PRODUCT DESCRIPTION:
@@ -408,7 +430,7 @@ PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}
 
 PRODUCT FEATURES & INGREDIENTS:
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : project.productDescription}`;
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : project.productDescription}`;
       },
 
       userMessage: (project, _previousOutputs, peerOutputs) => `ROOT CAUSE (simplified):
@@ -418,6 +440,12 @@ PRODUCT DESCRIPTION:
 ${project.productDescription}
 
 ## MECHANISM BUILDING — Proprietary 3-Step Solution
+
+USE THE S-T-O-K FRAMEWORK (from EVOLVE Market Sophistication):
+- S = SITUATION: What is the current market context? What do competitors claim?
+- T = TASK: What must we find to break through? What new approach is needed?
+- O = OBJECTIVE: Give the customer NEW HOPE that THIS product will solve their problem
+- K = KNOWLEDGE: What specific product features/ingredients enable our mechanism?
 
 Build a proprietary mechanism that directly addresses the root cause. Name it. Make it memorable. Make it feel like a scientific breakthrough that's also simple enough for anyone to understand.
 
@@ -470,6 +498,12 @@ Build a proprietary mechanism that directly addresses the root cause. Name it. M
       "landing_page_headline": "headline for the mechanism section of a sales page",
       "email_tease": "one line that creates curiosity about the mechanism without revealing it"
     },
+    "stok_framework": {
+      "situation": "current market context — what competitors claim, market sophistication stage",
+      "task": "what new approach must we find to break through",
+      "objective": "how this mechanism gives NEW HOPE",
+      "knowledge": "specific product features/ingredients that enable this mechanism"
+    },
     "alternative_names": [
       {
         "name": "alternative proprietary name",
@@ -486,6 +520,22 @@ Build a proprietary mechanism that directly addresses the root cause. Name it. M
   }
 }
 
+## ZAK MECHANISM PSYCHOLOGY
+${ZAK_MECHANISM_PSYCHOLOGY}
+
+Also include in the mechanism output:
+    "damaging_admission": {
+      "weakness": "ONE genuine limitation of the product/mechanism to admit",
+      "how_to_frame": "How to present it as a trust-builder (e.g., 'This won't work overnight because real cellular repair takes 3 weeks...')",
+      "trust_payoff": "What trust is gained by admitting this",
+      "transition_to_strength": "How the weakness connects to a strength"
+    },
+    "buildup_narrative": {
+      "recommended_structure": "frustration_expert|discovery_recommendation",
+      "why": "why this structure fits this product/market",
+      "story_seed": "2-3 sentences that start the buildup narrative"
+    }
+
 RULES:
 - The mechanism name must be PROPRIETARY — something no competitor uses
 - Exactly 3 steps — no more, no less
@@ -495,18 +545,126 @@ RULES:
 - "how_it_works_simple" must pass the coffee conversation test
 - Alternative names: at least 3, different styles
 - The mechanism must make the product feel INEVITABLE — "of course this works, it addresses the real problem"
-- Copy-ready sections must be directly usable, not templates`,
+- Copy-ready sections must be directly usable, not templates
+- MUST include a damaging admission — one REAL weakness that builds trust
+- MUST recommend a buildup narrative structure (Frustration+Expert OR Discovery+Recommendation)`,
     },
 
-    // --- WAVE 4: Depends on root-cause-phase2 + mechanism-builder ---
+    // --- WAVE 4: mechanism-simplifier depends on mechanism-builder ---
+    // ZAK Solution Mechanism Part 2: takes raw mechanism → 3 phases
+    // (understand technically → simplify in plain language → write punchy copy section)
+    {
+      id: 'mechanism-simplifier',
+      name: 'Mechanism Simplifier & Copy Writer (ZAK Part 2)',
+      model: 'opus',
+      dependsOn: ['mechanism-builder'],
+      systemPrompt: (project) => `You are a world-class direct response copywriter and product strategist for a $100M/year brand in the ${project.niche || project.targetMarket} space. You are provided with a unique solution mechanism – a strategic, research-backed theory of how to solve a specific problem by addressing it at the root level. This is not about the product itself – it's about the underlying process or approach that makes it possible to fix the real issue.
+
+This mechanism was developed after identifying the root cause – but your task is NOT to explain or reference the root cause. Only the mechanism.
+
+PRODUCT: ${project.name || 'See description'}
+TARGET MARKET: ${project.targetMarket}
+TARGET LANGUAGE: ${project.targetLanguage}`,
+
+      userMessage: (project, _previousOutputs, peerOutputs) => `MECHANISM (raw, from Phase 1):
+${peerOutputs['mechanism-builder'] || 'Not available — use product context'}
+
+PRODUCT DESCRIPTION:
+${project.productDescription}
+
+## YOUR TASK — 3 Phases (execute ALL three sequentially)
+
+### Phase 1 — Understand the Mechanism (Technically + Logically)
+- Read the solution mechanism provided.
+- Identify how it works – logically, biologically, behaviorally, etc.
+- It may include clinical scientific terms – these should remain, but must be explained in a way that is clear and digestible.
+- Focus only on the mechanism – not the product or the root cause.
+
+### Phase 2 — Explain the Mechanism in Plain but Credible Language
+- Summarize the mechanism in clear, non-fluffy English – avoid sounding metaphorical or foggy.
+- Keep technical terms (when useful), but explain them clearly, like a smart friend would do.
+- If needed, add one clean visual metaphor or analogy to tie everything together emotionally – but don't over-rely on metaphor.
+
+### Phase 3 — Write the Copy (Punchy "How It Works" Section)
+Now shift into direct response mode. Write a section that:
+- Focuses ONLY on the solution mechanism
+- Uses short, punchy, emotionally resonant sentences – not one big paragraph
+- Reads like you're talking directly to a person who's been dealing with this issue and is tired of false promises
+- Includes light science – clearly explained and easy to grasp
+- Uses one clear visual or metaphor only if it helps clarify the mechanism
+- Feels like something that could be dropped into the "How it works" or "Why this actually fixes it" section of an advertorial or VSL
+
+This should make them say: "That actually makes sense" and "No one's explained it to me like this before."
+
+Output valid JSON:
+
+{
+  "mechanism_simplified": {
+    "technical_understanding": {
+      "core_logic": "how the mechanism works — logical/biological/behavioral breakdown",
+      "key_terms_explained": [
+        {
+          "term": "scientific/technical term from the mechanism",
+          "plain_explanation": "what it means in everyday language",
+          "why_it_matters": "why the customer should care about this"
+        }
+      ],
+      "logical_chain": "A causes B, which enables C, which fixes D — the full chain in one sentence"
+    },
+    "plain_language_summary": {
+      "one_paragraph": "the mechanism in 3-4 sentences, plain English, credible but not fluffy",
+      "one_sentence": "the mechanism in ONE sentence a 12-year-old gets",
+      "analogy": "one clean visual metaphor or analogy that ties it together (only if it genuinely helps)",
+      "coffee_test": "how you'd explain this mechanism over coffee to a skeptical friend in 30 seconds"
+    },
+    "copy_ready_section": {
+      "how_it_works_advertorial": "150-250 words. Short, punchy sentences. Light science. Emotionally resonant. Ready to drop into an advertorial 'How It Works' section. In ${project.targetLanguage}.",
+      "how_it_works_vsl": "100-150 words. Same content adapted for spoken narration — shorter sentences, more conversational, includes one pause moment ('Let that sink in.'). In ${project.targetLanguage}.",
+      "how_it_works_ugc_script": "60-90 words. How a real person would explain this mechanism on camera — casual, excited, like they just learned something amazing. In ${project.targetLanguage}.",
+      "mechanism_teaser": "15-25 words. A curiosity-driven one-liner that makes them want to learn HOW it works without revealing it. In ${project.targetLanguage}."
+    },
+    "credibility_anchors": [
+      {
+        "type": "study|expert|data_point|logical_proof",
+        "content": "the specific credibility anchor",
+        "simplified": "how to present it at 6th grade level"
+      }
+    ],
+    "objection_preempts": [
+      {
+        "objection": "what a skeptic would say about this mechanism",
+        "response": "how to address it without being defensive",
+        "tone": "empathetic|curious|matter-of-fact"
+      }
+    ]
+  }
+}
+
+RULES:
+- Phase 1 output feeds into Phase 2, Phase 2 feeds into Phase 3 — do NOT skip phases
+- The copy section is the crown jewel — it must be IMMEDIATELY usable
+- Plain language does NOT mean dumbed down — it means CLEAR. Keep credibility.
+- Technical terms are OK if explained. Jargon without explanation is NOT OK.
+- The advertorial section should make a tired, skeptical reader lean in and think "finally, someone who makes sense"
+- At least 3 credibility anchors
+- At least 3 objection preempts
+- ALL copy sections in ${project.targetLanguage}`,
+    },
+
+    // --- WAVE 5: Depends on root-cause-phase2 + mechanism-simplifier ---
+    // ZAK Root Cause Part 3 + Solution Mechanism Part 3: UGC clip scripts
     {
       id: 'ugc-points',
-      name: 'UGC Talking Points Generator',
+      name: 'UGC Script Writer (ZAK 2-Clip Chain)',
       model: 'sonnet',
-      dependsOn: ['root-cause-phase2', 'mechanism-builder'],
-      systemPrompt: (project) => `You are a UGC script strategist who creates natural, conversational talking points for content creators. You understand how real people explain complex health/product topics on TikTok, Instagram Reels, and YouTube Shorts.
+      dependsOn: ['root-cause-phase2', 'mechanism-simplifier'],
+      systemPrompt: (project) => `You are a UGC-focused creative strategist for a $100M/year brand in the ${project.niche || project.targetMarket} space. You create authentic, conversational video scripts that feel like real people sharing discoveries — NOT scripted ads.
 
-Your talking points must sound like someone who GENUINELY discovered something amazing and can't wait to tell their friends — NOT like a scripted ad.
+You produce TWO SEPARATE UGC CLIP SEGMENTS that chain together:
+1. CLIP 1 — Root Cause Explanation (the creator explains what's REALLY causing the problem)
+2. CLIP 2 — Solution Mechanism Explanation (the creator explains how you actually fix it)
+
+These are consecutive segments of the SAME video. Clip 1 sets up the problem. Clip 2 follows with "Okay so here's what actually fixes it..."
 
 PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}
@@ -515,48 +673,73 @@ TARGET LANGUAGE: ${project.targetLanguage}`,
       userMessage: (project, _previousOutputs, peerOutputs) => `ROOT CAUSE (simplified):
 ${peerOutputs['root-cause-phase2'] || 'Not available'}
 
-MECHANISM:
-${peerOutputs['mechanism-builder'] || 'Not available'}
+MECHANISM (simplified):
+${peerOutputs['mechanism-simplifier'] || 'Not available'}
 
 PRODUCT DESCRIPTION:
 ${project.productDescription}
 
-## UGC TALKING POINTS — Root Cause & Mechanism
+## MISSION: Create ZAK 2-Clip UGC Chain + Supporting Materials
 
-Generate talking points a UGC creator could use to explain the root cause and mechanism in a natural, conversational way. These should work for 15-60 second video formats.
+### CLIP 1 — UGC-Style Root Cause Explanation (ZAK Root Cause Part 3)
+
+Write a short, natural video monologue from the perspective of a real person who personally struggles with the problem.
+- The tone should feel authentic — like someone talking to a friend on TikTok
+- They should explain what they found out is actually causing the problem (based on the simplified root cause above)
+- Keep the language simple and casual — no jargon or heavy science terms
+- If it fits naturally, include a visual metaphor or analogy to make it more memorable
+- No story intro, no product mention, no CTA — JUST the root cause explanation
+- 60-90 words, conversational delivery
+
+### CLIP 2 — UGC-Style Solution Mechanism Explanation (ZAK Mechanism Part 3)
+
+Write the NEXT segment of the video, where the creator continues her casual monologue and breaks down the solution mechanism — like she's talking to a friend.
+- She's just explained the root cause, and now she's following up with: "Okay so here's what actually fixes it..."
+- Tone: relaxed, curious but confident, like she just learned this herself and is now putting her friends on
+- No mention of product yet — just the theory of action that fixes the issue
+- Include light scientific terms only if they're explained clearly
+- Use one simple visual analogy or example if it fits naturally (but don't force it)
+- Must feel logical, obvious, and emotionally relieving — "Finally, someone explained how to actually fix this"
+- 60-90 words, conversational delivery
+
+Output valid JSON:
 
 {
   "ugc_talking_points": {
+    "root_cause_clip": {
+      "clip_script": "the full 60-90 word root cause monologue in ${project.targetLanguage}",
+      "clip_script_source_lang": "same in ${project.sourceLanguage}",
+      "tone": "authentic|shocked|empathetic|conspiratorial",
+      "creator_type": "expert|everyday_person|mom|fitness_enthusiast|skeptic_convert",
+      "key_moment": "the single line that makes the viewer go 'wait, WHAT?'",
+      "metaphor_used": "the analogy/metaphor if one was used, or 'none'"
+    },
+    "root_cause_talking_points": [
+      "7-10 short talking point prompts for creators to riff on the root cause in their own voice — easy to remember, not full sentences, just idea prompts"
+    ],
+    "mechanism_clip": {
+      "clip_script": "the full 60-90 word mechanism monologue in ${project.targetLanguage}",
+      "clip_script_source_lang": "same in ${project.sourceLanguage}",
+      "transition_line": "the exact line that bridges from root cause to mechanism ('Okay so here's what actually fixes it...')",
+      "tone": "relaxed|confident|curious|relieved",
+      "creator_type": "",
+      "key_moment": "the line that makes viewer think 'that actually makes sense'",
+      "analogy_used": "the visual analogy if used, or 'none'"
+    },
+    "mechanism_talking_points": [
+      "7-10 short talking point prompts for creators to riff on the mechanism — focus ONLY on the solution approach, not the product"
+    ],
+    "combined_script": {
+      "full_script": "Clip 1 + Clip 2 stitched together as one continuous monologue (120-180 words total) in ${project.targetLanguage}",
+      "full_script_source_lang": "same in ${project.sourceLanguage}",
+      "total_duration": "30s|45s|60s",
+      "emotional_arc": "curiosity → shock/realization → relief → hope"
+    },
     "root_cause_hooks": [
       {
         "hook": "the opening line that stops the scroll — 3-7 words",
         "type": "question|statement|confession|challenge|reveal",
         "scroll_stop_score": 1-10
-      }
-    ],
-    "root_cause_scripts": [
-      {
-        "format": "story|education|rant|confession|reaction",
-        "duration": "15s|30s|60s",
-        "hook": "opening line",
-        "setup": "1-2 sentences setting up the problem (relatable)",
-        "reveal": "1-2 sentences revealing the root cause (the aha)",
-        "bridge": "1 sentence connecting to the solution",
-        "cta_direction": "where to direct (not the actual CTA — that's for later gates)",
-        "tone": "excited|shocked|empathetic|conspiratorial|educational",
-        "creator_type": "expert|everyday_person|mom|fitness_enthusiast|skeptic_convert — who delivers this best"
-      }
-    ],
-    "mechanism_scripts": [
-      {
-        "format": "explainer|demo|before_after_story|myth_bust",
-        "duration": "30s|60s",
-        "hook": "opening line about the mechanism",
-        "step1_explanation": "how to explain step 1 naturally",
-        "step2_explanation": "how to explain step 2 naturally",
-        "step3_explanation": "how to explain step 3 naturally",
-        "why_it_works_line": "the one line that ties it all together",
-        "creator_type": ""
       }
     ],
     "villain_scripts": [
@@ -586,14 +769,17 @@ Generate talking points a UGC creator could use to explain the root cause and me
 }
 
 RULES:
+- Root cause clip: 60-90 words, NO product mention, NO CTA, JUST the root cause
+- Mechanism clip: 60-90 words, CONTINUES from root cause clip, NO product mention
+- Combined script: both clips stitched together must flow as ONE natural monologue
+- 7-10 talking points per clip (root cause + mechanism) — idea prompts, not full sentences
 - At least 5 root cause hooks with scroll-stop scores
-- At least 4 root cause scripts across different formats and durations
-- At least 3 mechanism scripts
 - At least 3 villain scripts (one per villain type)
 - At least 2 combo scripts
-- ALL talking points must sound NATURAL — like gossip, not a presentation
+- ALL scripts must sound NATURAL — like gossip, not a presentation
 - Creator types must be specific — don't just say "influencer"
-- Hooks must be genuinely scroll-stopping — test against "would I stop for this?"
+- The transition from root cause → mechanism must feel seamless, not forced
+- ALL scripts in BOTH ${project.sourceLanguage} and ${project.targetLanguage}
 - Do/dont: at least 5 items each`,
     },
   ],
@@ -608,7 +794,10 @@ PRODUCT DESCRIPTION: ${project.productDescription}
 TARGET MARKET: ${project.targetMarket}`;
     }
 
-    return `You are the Lead Strategist at a $100M/year direct response agency. Your team of 6 specialists has completed their root cause research, belief error analysis, mechanism building, villain creation, and UGC talking point development.
+    return `You are the Lead Strategist at a $100M/year direct response agency. Your team of 7 specialists has completed their work in a multi-part chain:
+- Root Cause: raw research (Phase 1) → simplified + aha moment (Phase 2)
+- Mechanism: raw creation (Phase 1) → simplified + copy-ready (Phase 2)
+- Belief Error, Villain Framework, UGC 2-Clip Scripts
 
 Your job: COMPILE their work into a single, cohesive Root Cause & Mechanism Dossier that becomes the foundation for all copy and creative.
 
@@ -616,11 +805,13 @@ CRITICAL RULES:
 1. Do NOT discard any specialist work — integrate ALL of it
 2. Cross-reference the root cause with the belief error — they MUST align
 3. Verify the mechanism directly addresses the root cause — no logical gaps
-4. Ensure villains are consistent with the root cause narrative
-5. Check that UGC talking points accurately reflect the simplified root cause
-6. Resolve any contradictions between specialists
-7. Add your strategic synthesis — what does the combined picture mean for creative?
-8. Create copy-ready variations that use the unified root cause + mechanism + villain narrative
+4. The mechanism-simplifier's copy-ready sections are GOLD — preserve them exactly
+5. Ensure villains are consistent with the root cause narrative
+6. Check that UGC clips accurately reflect the simplified root cause AND mechanism
+7. Verify the 2-clip UGC chain flows naturally (root cause → mechanism transition)
+8. Resolve any contradictions between specialists
+9. Add your strategic synthesis — what does the combined picture mean for creative?
+10. Create copy-ready variations that use the unified root cause + mechanism + villain narrative
 
 OUTPUT: A single unified JSON dossier that a creative team can use as their source of truth for ALL root cause and mechanism messaging.`;
   },
@@ -633,15 +824,15 @@ OUTPUT: A single unified JSON dossier that a creative team can use as their sour
       return `Analyze this product and produce the full root cause & mechanism dossier.
 
 PRODUCT: ${project.productDescription}
-GATE 1 (Product Intel): ${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : 'Not available'}
-GATE 2 (Avatar): ${g2 ? JSON.stringify(g2, null, 2).slice(0, 2000) : 'Not available'}`;
+GATE 1 (Product Intel): ${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : 'Not available'}
+GATE 2 (Avatar): ${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : 'Not available'}`;
     }
 
     return `Here are your specialists' reports. Compile them into the unified Root Cause & Mechanism Dossier.
 
 PREVIOUS GATE CONTEXT:
-- Gate 1 summary: ${g1 ? JSON.stringify(g1, null, 2).slice(0, 1000) : 'Not available'}
-- Gate 2 summary: ${g2 ? JSON.stringify(g2, null, 2).slice(0, 1000) : 'Not available'}
+- Gate 1 summary: ${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : 'Not available'}
+- Gate 2 summary: ${g2 ? JSON.stringify(g2, null, 2).slice(0, 4000) : 'Not available'}
 
 === ROOT CAUSE — RAW RESEARCH (Phase 1) ===
 ${subAgentOutputs['root-cause-phase1'] || 'N/A'}
@@ -652,8 +843,11 @@ ${subAgentOutputs['root-cause-phase2'] || 'N/A'}
 === FALSE BELIEF / BELIEF ERROR ===
 ${subAgentOutputs['belief-error'] || 'N/A'}
 
-=== PROPRIETARY MECHANISM ===
+=== PROPRIETARY MECHANISM (Raw — Phase 1) ===
 ${subAgentOutputs['mechanism-builder'] || 'N/A'}
+
+=== MECHANISM SIMPLIFIED & COPY-READY (Phase 2) ===
+${subAgentOutputs['mechanism-simplifier'] || 'N/A'}
 
 === VILLAIN FRAMEWORK ===
 ${subAgentOutputs['villain-creator'] || 'N/A'}
@@ -691,7 +885,18 @@ Compile into a single JSON wrapped in \`\`\`json code blocks:
     "how_it_works_technical": "",
     "copy_ready": { ... },
     "alternative_names": [ ... ],
-    "proof": { ... }
+    "proof": { ... },
+    "simplified": {
+      "plain_language_summary": "... from mechanism-simplifier Phase 2 ...",
+      "copy_ready_section": {
+        "how_it_works_advertorial": "... 150-250 words, ready to drop in ...",
+        "how_it_works_vsl": "... 100-150 words for narration ...",
+        "how_it_works_ugc_script": "... 60-90 words casual ...",
+        "mechanism_teaser": "... 15-25 word curiosity one-liner ..."
+      },
+      "credibility_anchors": [ ... ],
+      "objection_preempts": [ ... ]
+    }
   },
   "villains": {
     "hidden_enemy": { ... },
@@ -701,9 +906,12 @@ Compile into a single JSON wrapped in \`\`\`json code blocks:
     "combinations": [ ... ]
   },
   "ugc_talking_points": {
+    "root_cause_clip": { ... ZAK 2-clip: root cause monologue ... },
+    "root_cause_talking_points": [ ... 7-10 idea prompts ... ],
+    "mechanism_clip": { ... ZAK 2-clip: mechanism monologue ... },
+    "mechanism_talking_points": [ ... 7-10 idea prompts ... ],
+    "combined_script": { ... full stitched 120-180 word monologue ... },
     "root_cause_hooks": [ ... ],
-    "root_cause_scripts": [ ... ],
-    "mechanism_scripts": [ ... ],
     "villain_scripts": [ ... ],
     "combo_scripts": [ ... ]
   },
@@ -726,17 +934,21 @@ Compile into a single JSON wrapped in \`\`\`json code blocks:
 
   reviewerPrompt: `You are a senior direct response strategist reviewing a Root Cause & Mechanism Dossier. Score with brutal honesty. This gate is the FOUNDATION of all copy — if it's weak, everything downstream fails.
 
+${EVOLVE_COHERENCE_CHAIN}
+
 DIMENSIONS (each /10, total /100, threshold >=72%):
 1. Root Cause Credibility: Is the root cause believable, evidence-backed, and not conspiracy-level? Does it explain why existing solutions fail?
 2. Aha Moment Power: Does the aha sentence create a genuine "THAT'S why nothing worked" moment? Is it memorable and specific?
 3. 6th Grade Simplification: Is the root cause explained simply enough for anyone to understand? No jargon? Vivid analogies?
 4. Belief Error Precision: Is the false belief something the avatar ACTUALLY believes? Is the correction a genuine revelation, not a lecture?
-5. Mechanism Naming & Structure: Is the proprietary name memorable and credible? Are the 3 steps logical, simple, and connected to the root cause?
-6. Villain Quality: Are all 3 villain types specific, credible, and emotionally satisfying? Is the self-saboteur handled with empathy?
+5. Mechanism Naming & Structure: Is the proprietary name memorable and credible? Are the 3 steps logical, simple, and connected to the root cause? S-T-O-K framework applied?
+6. Market Sophistication Assessment: Is the market's sophistication stage correctly identified with evidence? Is the strategic response (New Mechanism/New Information/New Identity) appropriate for that stage?
 7. Narrative Alignment: Do root cause, belief error, mechanism, and villains all tell ONE coherent story? Any contradictions?
-8. Copy-Ready Quality: Can a copywriter use the provided variations immediately without modification? Are they distinct from each other?
-9. UGC Talking Points: Do the scripts sound natural and conversational? Are hooks genuinely scroll-stopping? Multiple formats covered?
-10. Strategic Completeness: Is anything missing that Gate 4+ will need? Does this connect properly to Gate 1 product intel and Gate 2 avatar research?
+8. Copy-Ready Quality: Can a copywriter use the provided variations immediately without modification? Are they distinct from each other? Damaging admission included and genuine (not fake weakness)?
+9. Buildup Narrative: Is the recommended narrative structure (Frustration+Expert or Discovery+Recommendation) justified? Story seed compelling? Product build-up psychology triggers present (pre-solved problem, scarcity of intent, earned solution, social proof by association, elevating stakes)?
+10. Downstream Coherence Lock: Are mechanism name, root cause one-sentence, belief error, 3 mechanism steps, AND damaging admission LOCKED and SPECIFIC enough that Gates 4-9 CANNOT dilute them? Check against the Coherence Chain protocol above.
+
+ANTI-VANISHING GRADIENT CHECK: The mechanism name, root cause, belief error, and 3 steps defined here become the SINGLE SOURCE OF TRUTH for all downstream gates. If they are vague, generic, or interchangeable with any other product, FAIL this dimension.
 
 Respond in valid JSON with score, maxScore (100), dimensions array (each with name, score, maxScore, feedback), feedback (overall), and passed boolean.`,
 

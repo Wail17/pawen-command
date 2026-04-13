@@ -7,10 +7,18 @@ import { getProject, getGateOutput, getAllGateOutputs, saveGateOutput, saveProje
 import { GATE_LABELS, ALL_GATES, canAccessGate, unlockNextGate } from '@/lib/store/project-utils';
 import Pipeline from '@/components/ui/Pipeline';
 import GateView from '@/components/gates/GateView';
+import Gate1AvatarExcavation from '@/components/gates/Gate1AvatarExcavation';
+import GateContextBar from '@/components/gates/GateContextBar';
+import SmartGateOutput from '@/components/gates/SmartGateOutput';
 import { runGate, runCongruenceCheck } from '@/lib/agents/runGate';
 import { getGateConfig, getGateSubAgentNames } from '@/lib/gates/registry';
 import { learnFromRejection } from '@/lib/agents/memory';
 import { getPersonaForGate } from '@/lib/agents/personas';
+import { captureFromPick, captureFromApproval, captureRejection } from '@/lib/learning/capture';
+import StaticAdStudio from '@/components/gates/StaticAdStudio';
+import Gate2DeepDiveView from '@/components/gates/Gate2DeepDiveView';
+import ReferenceAdsUploader from '@/components/gates/ReferenceAdsUploader';
+import { demoGateData, demoGate1, demoBrandDNA } from '@/lib/gates/demoData';
 
 export default function GatePage() {
   const params = useParams();
@@ -28,6 +36,10 @@ export default function GatePage() {
   const [manualText, setManualText] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [variants, setVariants] = useState<Record<string, unknown>[]>([]);
+  const [activeVariant, setActiveVariant] = useState(0);
+  const [generatingVariant, setGeneratingVariant] = useState(false);
+  const [upstreamData, setUpstreamData] = useState<{ gate4?: Record<string, unknown>; gate6?: Record<string, unknown> }>({});
 
   const loadData = useCallback(async () => {
     const p = await getProject(projectId);
@@ -37,6 +49,18 @@ export default function GatePage() {
 
     const existing = await getGateOutput(projectId, gateId);
     if (existing) setOutput(existing);
+
+    if (gateId === 'gate7' || gateId === 'gate8') {
+      const [g4, g6] = await Promise.all([
+        getGateOutput(projectId, 'gate4' as GateId),
+        getGateOutput(projectId, 'gate6' as GateId),
+      ]);
+      setUpstreamData({
+        gate4: g4?.data as Record<string, unknown> | undefined,
+        gate6: g6?.data as Record<string, unknown> | undefined,
+      });
+    }
+
     setLoading(false);
   }, [projectId, gateId, router]);
 
@@ -157,6 +181,11 @@ export default function GatePage() {
       setStatusText('');
     }
 
+    // Capture gold outputs from approved gate (adaptive learning)
+    if (output) {
+      captureFromApproval({ project, gateId, gateOutput: output }).catch(() => {});
+    }
+
     // Unlock next gate
     const updatedProject = unlockNextGate(
       { ...project, gateStatuses: { ...project.gateStatuses, [gateId]: 'approved' } },
@@ -190,6 +219,9 @@ export default function GatePage() {
       projectContext: `${project.name} — ${project.targetMarket}`,
     });
 
+    // Capture rejection signal (adaptive learning)
+    captureRejection({ gateId, reason: rejectReason.trim() }).catch(() => {});
+
     // Reset gate status to available so it can be re-run
     const updatedProject = {
       ...project,
@@ -201,6 +233,88 @@ export default function GatePage() {
     setShowRejectModal(false);
     setRejectReason('');
   }, [project, gateId, projectId, rejectReason]);
+
+  // Persist interactive picks / notes back into the gate output so
+  // downstream gates and re-runs can see them.
+  // Also captures new ★ picks as gold outputs for adaptive learning.
+  const handleDecisionsChange = useCallback(
+    async (nextDecisions: Record<string, unknown>) => {
+      if (!output) return;
+
+      // Detect new picks and capture as gold outputs
+      if (project) {
+        const oldPicked = ((output.humanDecisions as Record<string, unknown>)?.picked ?? {}) as Record<string, string[]>;
+        const newPicked = ((nextDecisions?.picked ?? {}) as Record<string, string[]>);
+
+        for (const [path, items] of Object.entries(newPicked)) {
+          const oldItems = oldPicked[path] ?? [];
+          const added = (items as string[]).filter(i => !oldItems.includes(i));
+          for (const idx of added) {
+            const content = resolveContentAtPath(output.data, path, idx);
+            if (content && content.length > 20) {
+              captureFromPick({
+                project,
+                gateId,
+                sectionPath: path,
+                content,
+              }).catch(() => {});
+            }
+          }
+        }
+      }
+
+      const updated: GateOutput = {
+        ...output,
+        humanDecisions: nextDecisions,
+        updatedAt: new Date().toISOString(),
+      };
+      setOutput(updated);
+      await saveGateOutput(updated);
+    },
+    [output, project, gateId],
+  );
+
+  // Generate a creative variant of the current output
+  const handleGenerateVariant = useCallback(async () => {
+    if (!project || !output) return;
+    setGeneratingVariant(true);
+
+    const config = getGateConfig(gateId);
+    const allOutputs = await getAllGateOutputs(projectId);
+    const previousOutputs: Record<string, unknown> = {};
+    for (const o of allOutputs) {
+      if (o.gateId !== gateId) previousOutputs[o.gateId] = o.data;
+    }
+
+    try {
+      const result = await runGate({
+        gateId,
+        projectId,
+        project,
+        config,
+        previousGateOutputs: previousOutputs,
+        maxReviewIterations: 2,
+        onStreamChunk: (chunk) => setStreamingText((prev) => prev + chunk),
+        onStatusChange: (status) => setStatusText(`Variant: ${status}`),
+      });
+
+      if (result.parsedOutput && Object.keys(result.parsedOutput).length > 0) {
+        // Add original as first variant if not already tracked
+        if (variants.length === 0 && output.data) {
+          setVariants([output.data, result.parsedOutput]);
+        } else {
+          setVariants(prev => [...prev, result.parsedOutput]);
+        }
+        setActiveVariant(variants.length === 0 ? 1 : variants.length);
+      }
+    } catch (error) {
+      console.error('Variant generation error:', error);
+    } finally {
+      setGeneratingVariant(false);
+      setStreamingText('');
+      setStatusText('');
+    }
+  }, [project, output, gateId, projectId, variants]);
 
   const handleManualSubmit = useCallback(async () => {
     if (!project || !manualText.trim()) return;
@@ -244,6 +358,112 @@ export default function GatePage() {
     setProject(updatedProject);
   }, [project, manualText, gateId, projectId]);
 
+  const handleLoadDemo = useCallback(async () => {
+    if (!project) return;
+
+    const demoData = demoGateData(gateId);
+    if (!demoData || Object.keys(demoData).length === 0) return;
+
+    const gateOutput: GateOutput = {
+      gateId,
+      projectId,
+      status: 'pending_decisions',
+      data: demoData,
+      generationLog: [{
+        timestamp: new Date().toISOString(),
+        agent: 'lead',
+        model: 'demo-data',
+        iteration: 1,
+        input_summary: 'Demo data loaded',
+        output_summary: 'Realistic mock data for UI preview (product: Slapen)',
+      }],
+      reviewResult: null,
+      congruenceResult: null,
+      humanDecisions: {},
+      checkpoint: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await saveGateOutput(gateOutput);
+    setOutput(gateOutput);
+
+    const updatedProject = {
+      ...project,
+      gateStatuses: { ...project.gateStatuses, [gateId]: 'pending_review' as const },
+    };
+    await saveProject(updatedProject);
+    setProject(updatedProject);
+  }, [project, gateId, projectId]);
+
+  const handleLoadDemoGate1 = useCallback(async () => {
+    if (!project) return;
+
+    const avatarResult = demoGate1();
+    const brandDNA = demoBrandDNA();
+
+    // Persist GateOutput for Gate 1 so downstream gates can find it
+    const now = new Date().toISOString();
+    const gate1Output: GateOutput = {
+      gateId: 'gate1',
+      projectId,
+      status: 'pending_decisions',
+      data: avatarResult as unknown as Record<string, unknown>,
+      generationLog: [{
+        timestamp: now,
+        agent: 'lead',
+        model: 'demo-data',
+        iteration: 1,
+        input_summary: 'Demo data loaded',
+        output_summary: '3 sub-avatars (Slapen sleep supplement demo)',
+      }],
+      reviewResult: null,
+      congruenceResult: null,
+      humanDecisions: {},
+      checkpoint: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await saveGateOutput(gate1Output);
+
+    // Also persist Brand DNA gate output
+    const brandDnaOutput: GateOutput = {
+      gateId: 'brand-dna',
+      projectId,
+      status: 'approved',
+      data: brandDNA as unknown as Record<string, unknown>,
+      generationLog: [{
+        timestamp: now,
+        agent: 'lead',
+        model: 'demo-data',
+        iteration: 1,
+        input_summary: 'Demo Brand DNA',
+        output_summary: 'Slapen brand identity locked',
+      }],
+      reviewResult: null,
+      congruenceResult: null,
+      humanDecisions: {},
+      checkpoint: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await saveGateOutput(brandDnaOutput);
+
+    const updatedProject = {
+      ...project,
+      avatarRunResult: avatarResult,
+      brandDNA: { ...brandDNA, locked: true },
+      gateStatuses: {
+        ...project.gateStatuses,
+        gate1: 'approved' as const,
+        'brand-dna': 'approved' as const,
+        gate2: 'available' as const,
+      },
+    };
+    await saveProject(updatedProject);
+    setProject(updatedProject);
+  }, [project, projectId]);
+
   if (loading || !project) {
     return (
       <div className="min-h-screen bg-bg-primary flex items-center justify-center">
@@ -254,6 +474,33 @@ export default function GatePage() {
 
   const config = getGateConfig(gateId);
   const subAgentNames = getGateSubAgentNames(gateId);
+
+  // Resolve actual content at a section path + item index (for ★ pick capture)
+  function resolveContentAtPath(
+    data: Record<string, unknown>,
+    sectionPath: string,
+    itemIndex: string,
+  ): string | null {
+    const section = data[sectionPath];
+    const idx = parseInt(itemIndex, 10);
+    if (Array.isArray(section) && !isNaN(idx) && idx < section.length) {
+      const item = section[idx];
+      return typeof item === 'string' ? item : JSON.stringify(item);
+    }
+    return null;
+  }
+
+  // Gate 1 = Avatar Excavation. It uses a fully custom pipeline
+  // (src/lib/avatars/runAvatarExcavation.ts) and a dedicated UI,
+  // bypassing the generic GateView / runGate flow entirely.
+  if (gateId === 'gate1') {
+    return (
+      <div className="min-h-screen bg-bg-primary flex">
+        <Pipeline project={project} activeGate={gateId} />
+        <Gate1AvatarExcavation project={project} onProjectChange={setProject} onLoadDemo={handleLoadDemoGate1} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg-primary flex">
@@ -271,6 +518,15 @@ export default function GatePage() {
         onGenerate={handleGenerate}
         onRegenerate={handleGenerate}
         onApprove={handleApprove}
+        onLoadDemo={handleLoadDemo}
+        hasCongruenceCheck={config.hasCongruenceCheck}
+        brandDNAStatus={
+          !project.brandDNA ? 'missing' : project.brandDNA.locked ? 'locked' : 'unlocked'
+        }
+        projectId={projectId}
+        contextBar={
+          <GateContextBar project={project} onProjectChange={setProject} />
+        }
         manualInput={
           <div className="space-y-3">
             <textarea
@@ -300,6 +556,19 @@ export default function GatePage() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Reference Ads uploader — Gate 7 only, before running */}
+        {gateId === 'gate7' && !isGenerating && (
+          <div className="mb-4">
+            <ReferenceAdsUploader
+              project={project}
+              onProjectChange={async (p) => {
+                setProject(p);
+                await saveProject(p);
+              }}
+            />
           </div>
         )}
 
@@ -361,18 +630,62 @@ export default function GatePage() {
           </div>
         )}
 
-        {/* Gate output display */}
-        {output && output.data && (
-          <div className="space-y-4">
-            <div className="p-4 bg-bg-card border border-border rounded-xl">
-              <h3 className="text-sm font-semibold text-text-secondary mb-2">Output</h3>
-              <pre className="text-xs text-text-primary whitespace-pre-wrap font-mono max-h-[600px] overflow-y-auto">
-                {typeof output.data === 'object'
-                  ? JSON.stringify(output.data, null, 2)
-                  : String(output.data)}
-              </pre>
-            </div>
+        {/* Variant controls */}
+        {output && output.data && !isGenerating && (
+          <div className="mb-4 flex items-center gap-3">
+            <button
+              onClick={handleGenerateVariant}
+              disabled={generatingVariant || variants.length >= 4}
+              className="px-3 py-1.5 border border-accent-teal/50 text-accent-teal rounded-lg text-xs hover:bg-accent-teal/10 disabled:opacity-40"
+            >
+              {generatingVariant ? 'Generating...' : `+ Variant (${variants.length > 0 ? variants.length : 1}/4)`}
+            </button>
+            {variants.length > 1 && (
+              <div className="flex gap-1">
+                {variants.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveVariant(i)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      activeVariant === i
+                        ? 'bg-accent-orange text-white'
+                        : 'bg-bg-card border border-border text-text-secondary hover:border-accent-orange'
+                    }`}
+                  >
+                    {i === 0 ? 'Original' : `V${i}`}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Gate output display — dedicated views for gate2/gate7/gate8, SmartGateOutput for others */}
+        {output && output.data && (gateId === 'gate7' || gateId === 'gate8') && (
+          <StaticAdStudio
+            data={variants.length > 1 ? (variants[activeVariant] || output.data) : output.data}
+            humanDecisions={output.humanDecisions ?? {}}
+            onDecisionsChange={handleDecisionsChange}
+            gate4Data={upstreamData.gate4}
+            gate6Data={upstreamData.gate6}
+          />
+        )}
+        {output && output.data && gateId === 'gate2' && (
+          <Gate2DeepDiveView
+            data={variants.length > 1 ? (variants[activeVariant] || output.data) : output.data}
+            reviewResult={output.reviewResult}
+            sourceLanguage={project.targetLanguage}
+            humanDecisions={output.humanDecisions ?? {}}
+            onDecisionsChange={handleDecisionsChange}
+          />
+        )}
+        {output && output.data && gateId !== 'gate2' && gateId !== 'gate7' && gateId !== 'gate8' && (
+          <SmartGateOutput
+            data={variants.length > 1 ? (variants[activeVariant] || output.data) : output.data}
+            humanDecisions={output.humanDecisions ?? {}}
+            onDecisionsChange={handleDecisionsChange}
+            sourceLanguage={project.targetLanguage}
+          />
         )}
       </GateView>
     </div>

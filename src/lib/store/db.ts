@@ -8,6 +8,9 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Project, GateOutput } from '../types';
 import { KnowledgeEntry, TrainingSource, AgentMemoryEntry, TrainingChunk } from '../kb/types';
+import { GoldOutput, LearningProfile } from '../learning/types';
+import { Template } from '../templates/types';
+import { mirrorProject, mirrorProjectDelete, mirrorGateOutput } from './serverMirror';
 
 interface PawenDB extends DBSchema {
   projects: {
@@ -63,10 +66,33 @@ interface PawenDB extends DBSchema {
       'by-project': string;
     };
   };
+  // === v4: Adaptive Learning Engine ===
+  goldOutputs: {
+    key: string;
+    value: GoldOutput;
+    indexes: {
+      'by-gate': string;
+      'by-niche': string;
+      'by-project': string;
+    };
+  };
+  learningProfile: {
+    key: string;
+    value: LearningProfile;
+  };
+  // === v5: Template Editor ===
+  templates: {
+    key: string;
+    value: Template;
+    indexes: {
+      'by-project': string;
+      'by-category': string;
+    };
+  };
 }
 
 const DB_NAME = 'pawen-command-center';
-const DB_VERSION = 3;
+const DB_VERSION = 5;
 
 let dbInstance: IDBPDatabase<PawenDB> | null = null;
 
@@ -105,6 +131,23 @@ async function getDB(): Promise<IDBPDatabase<PawenDB>> {
         const chunkStore = db.createObjectStore('trainingChunks', { keyPath: 'id' });
         chunkStore.createIndex('by-source', 'sourceId');
       }
+
+      // === v4 stores: Adaptive Learning Engine ===
+      if (oldVersion < 4) {
+        const goldStore = db.createObjectStore('goldOutputs', { keyPath: 'id' });
+        goldStore.createIndex('by-gate', 'gateId');
+        goldStore.createIndex('by-niche', 'niche');
+        goldStore.createIndex('by-project', 'sourceProjectId');
+
+        db.createObjectStore('learningProfile', { keyPath: 'id' });
+      }
+
+      // === v5 stores: Template Editor ===
+      if (oldVersion < 5) {
+        const templateStore = db.createObjectStore('templates', { keyPath: 'id' });
+        templateStore.createIndex('by-project', 'projectId');
+        templateStore.createIndex('by-category', 'category');
+      }
     },
   });
 
@@ -128,6 +171,9 @@ export async function saveProject(project: Project): Promise<void> {
   const db = await getDB();
   project.updatedAt = new Date().toISOString();
   await db.put('projects', project);
+  // Fire-and-forget mirror to Neon so the god panel can see this project.
+  // Never throws — serverMirror.ts swallows errors internally.
+  mirrorProject(project);
 }
 
 export async function deleteProject(id: string): Promise<void> {
@@ -146,6 +192,10 @@ export async function deleteProject(id: string): Promise<void> {
   }
 
   await tx.done;
+
+  // Cascade-delete the server mirror too. Gate outputs are wiped
+  // server-side by the same DELETE call (see api/sync/project).
+  mirrorProjectDelete(id);
 }
 
 // === GATE OUTPUTS ===
@@ -165,6 +215,8 @@ export async function saveGateOutput(output: GateOutput): Promise<void> {
   output.updatedAt = new Date().toISOString();
   const record = { ...output, _key: `${output.projectId}:${output.gateId}` };
   await db.put('gateOutputs', record);
+  // Fire-and-forget mirror so admin can inspect every gate run.
+  mirrorGateOutput(output);
 }
 
 // === IMAGES ===
@@ -323,6 +375,86 @@ export async function getAllAgentMemories(): Promise<AgentMemoryEntry[]> {
 export async function deleteAgentMemory(id: string): Promise<void> {
   const db = await getDB();
   await db.delete('agentMemory', id);
+}
+
+// === GOLD OUTPUTS (Adaptive Learning) ===
+
+export async function saveGoldOutput(entry: GoldOutput): Promise<void> {
+  const db = await getDB();
+  await db.put('goldOutputs', entry);
+}
+
+export async function getGoldOutputsForGate(gateId: string): Promise<GoldOutput[]> {
+  const db = await getDB();
+  return db.getAllFromIndex('goldOutputs', 'by-gate', gateId);
+}
+
+export async function getGoldOutputsByNiche(niche: string): Promise<GoldOutput[]> {
+  const db = await getDB();
+  return db.getAllFromIndex('goldOutputs', 'by-niche', niche);
+}
+
+export async function getGoldOutputsForGateAndNiche(gateId: string, niche: string): Promise<GoldOutput[]> {
+  const db = await getDB();
+  const byGate = await db.getAllFromIndex('goldOutputs', 'by-gate', gateId);
+  return byGate.filter(g => g.niche === niche || g.niche === '' || niche === '');
+}
+
+export async function deleteGoldOutput(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('goldOutputs', id);
+}
+
+export async function deleteGoldOutputsByProject(projectId: string): Promise<void> {
+  const db = await getDB();
+  const entries = await db.getAllFromIndex('goldOutputs', 'by-project', projectId);
+  const tx = db.transaction('goldOutputs', 'readwrite');
+  for (const entry of entries) {
+    await tx.store.delete(entry.id);
+  }
+  await tx.done;
+}
+
+export async function getAllGoldOutputs(): Promise<GoldOutput[]> {
+  const db = await getDB();
+  return db.getAll('goldOutputs');
+}
+
+// === LEARNING PROFILE ===
+
+export async function getLearningProfile(): Promise<LearningProfile | undefined> {
+  const db = await getDB();
+  return db.get('learningProfile', 'default');
+}
+
+export async function saveLearningProfile(profile: LearningProfile): Promise<void> {
+  const db = await getDB();
+  await db.put('learningProfile', profile);
+}
+
+// === EXPORT ===
+
+// === TEMPLATES ===
+
+export async function getTemplate(id: string): Promise<Template | undefined> {
+  const db = await getDB();
+  return db.get('templates', id);
+}
+
+export async function getProjectTemplates(projectId: string): Promise<Template[]> {
+  const db = await getDB();
+  return db.getAllFromIndex('templates', 'by-project', projectId);
+}
+
+export async function saveTemplate(template: Template): Promise<void> {
+  const db = await getDB();
+  template.updatedAt = new Date().toISOString();
+  await db.put('templates', template);
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('templates', id);
 }
 
 // === EXPORT ===

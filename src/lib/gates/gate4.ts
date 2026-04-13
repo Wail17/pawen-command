@@ -6,17 +6,154 @@
 // ============================================================
 
 import { GateConfigDef } from './types';
+import { EVOLVE_EXECUTION_FRAMEWORK, EVOLVE_COHERENCE_CHAIN } from './evolveFrameworks';
+import { ZAK_HOOK_ARSENAL } from './zakFrameworks';
 
 const gate4: GateConfigDef = {
   id: 'gate4',
   description: 'Copy Arsenal — hooks (7 ZAK formulas), open loops, sensory language, future pacing, bucket brigades, takeaway copy',
 
   subAgents: [
-    // --- WAVE 1 (all parallel — no dependencies between them) ---
+    // --- WAVE 1: customer-language-extractor runs first (ZAK Customer Language Hooks Part 1) ---
+    {
+      id: 'customer-language-extractor',
+      name: 'Customer Language Extractor (ZAK Part 1)',
+      model: 'opus',
+      temperature: 0.7,
+      maxTokens: 12000,
+      systemPrompt: (project, previousOutputs) => {
+        const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
+
+        return `You are an elite customer language mining specialist for a $100M/year direct response brand. Your job is to extract the raw customer language that will become the foundation for scroll-stopping hooks.
+
+PRODUCT: ${project.name}
+TARGET MARKET: ${project.targetMarket}
+TARGET LANGUAGE: ${project.targetLanguage}
+NICHE: ${project.niche || 'See product'}
+
+## WHAT MAKES AN INSANE HOOK (understand this BEFORE extracting)
+
+A great hook does 3 JOBS in 3 seconds:
+1. ATTENTION (Second 0-1): Stop the scroll with pattern interrupt
+2. QUALIFICATION (Second 1-2): Make the right person think "this is about ME"
+3. COMMITMENT (Second 2-3): Create an open loop they MUST close
+
+A great hook triggers the REPTILIAN BRAIN:
+- THREAT: "This is hurting you"
+- OPPORTUNITY: "You could have this"
+- NOVELTY: "Wait, what?"
+- SELF: "That's ME"
+- CONTRAST: "Before vs After"
+- EMOTION: Strong feeling (fear, hope, frustration, relief)
+
+A great hook has these ELEMENTS:
+- Hyper-specific details (times, ages, numbers, scenarios)
+- Visual language (you can SEE it happening)
+- Emotional truth (names the feeling)
+- Open loop (unfinished, needs resolution)
+- Sounds like a REAL PERSON, not an ad
+- Uses PAIN over curiosity (pain hooks outperform 2-3x)
+
+A great hook AVOIDS:
+- Generic claims ("struggling with X?")
+- Marketer voice ("discover the secret")
+- Closed loops (story is complete, no reason to continue)
+- Broad language that could apply to anyone
+
+AVATAR CONTEXT:
+${g2 ? JSON.stringify(g2, null, 2).slice(0, 6000) : 'Not available — extract from product context'}`;
+      },
+
+      userMessage: (project, previousOutputs) => {
+        const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
+
+        return `${g2 ? `AVATAR DEEP DIVE:\n${JSON.stringify(g2, null, 2).slice(0, 10000)}\n\n` : `PRODUCT: ${project.productDescription}\n\n`}## MISSION: Extract 70 Customer Language Phrases (7 Categories × 10)
+
+Based on the avatar research above and the hook criteria, extract the raw customer language that will become hook ammunition.
+
+### CATEGORY 1: MICRO-SPECIFIC MOMENTS (10 examples)
+The tiny, visceral moments only someone with this problem would know.
+Example format: "That thing where you [specific action] because [specific reason]"
+
+### CATEGORY 2: INTERNAL DIALOGUE (10 examples)
+What they say to themselves. The thoughts in their head.
+Example format: "I'm starting to think..." / "Maybe I'm just..." / "What if I..."
+
+### CATEGORY 3: RELATIONSHIP MOMENTS (10 examples)
+How the problem affects their relationships. What others say/do.
+Example format: "My [person] said..." / "I caught my [person] looking at me like..."
+
+### CATEGORY 4: HUMILIATION MOMENTS (10 examples)
+Specific times they felt embarrassed, ashamed, or exposed.
+Example format: "The moment when..." / "I had to pretend that..."
+
+### CATEGORY 5: FAILED SOLUTION LANGUAGE (10 examples)
+How they describe things that didn't work.
+Example format: "I tried [X] and..." / "Everyone said [X] would help but..."
+
+### CATEGORY 6: TRANSFORMATION LANGUAGE (10 examples)
+How they'd describe life if the problem was solved. Be specific.
+Example format: "I just want to be able to..." / "I miss when I could..."
+
+### CATEGORY 7: TRIGGER PHRASES (10 examples)
+Phrases that sound like gossip/drama/real life, not ads.
+Example format: "My husband thought..." / "I almost..." / "They found out..."
+
+Output valid JSON:
+{
+  "customer_language_extraction": {
+    "micro_specific_moments": [
+      {
+        "id": "cl-ms01",
+        "phrase": "extracted phrase in ${project.sourceLanguage}",
+        "phrase_target_lang": "in ${project.targetLanguage}",
+        "source_quote": "the original avatar quote this came from (if available)",
+        "specificity_elements": ["what makes this hyper-specific: times, ages, numbers, scenarios"],
+        "emotion": "the emotion this evokes",
+        "visual_score": 1-10,
+        "hook_potential": 1-10
+      }
+    ],
+    "internal_dialogue": [...],
+    "relationship_moments": [...],
+    "humiliation_moments": [...],
+    "failed_solution_language": [...],
+    "transformation_language": [...],
+    "trigger_phrases": [...],
+    "top_10_phrases": [
+      {
+        "rank": 1,
+        "phrase": "",
+        "category": "",
+        "why_its_gold": "why this phrase has the highest hook potential"
+      }
+    ],
+    "total_phrases": 70
+  }
+}
+
+RULES:
+- EXACTLY 10 per category = 70 total
+- For each phrase, make them:
+  • Hyper-specific (times, ages, situations, numbers)
+  • Emotional (name the feeling)
+  • Visual (you can picture it)
+  • Authentic (sounds like real speech, not copywriting)
+  • Pattern-interrupting (would stop a scroll)
+- Use REAL customer language from the avatar deep dive — not invented marketing copy
+- The top 10 ranking is critical — these feed directly into hook creation
+- Include both source and target language
+- Pain phrases should outnumber aspiration phrases 2:1
+- Every phrase must pass the "would a real person actually say this?" test`;
+      },
+    },
+
+    // --- WAVE 2: hook-generator depends on customer-language-extractor (ZAK Part 2 flow) ---
     {
       id: 'hook-generator',
-      name: 'Hook Generator (7 ZAK Formulas + EVOLVE Scorecard)',
+      name: 'Hook Crafter (7 ZAK Formulas + EVOLVE Scorecard)',
       model: 'opus',
+      dependsOn: ['customer-language-extractor'],
       temperature: 0.85,
       maxTokens: 16000,
       systemPrompt: (project, previousOutputs) => {
@@ -71,22 +208,29 @@ Score each hook on 3 dimensions:
 - REPTILIAN (R, /10): How many reptilian triggers does it fire? Which ones?
 - HIERARCHY (H, /10): Where does it land on the Attention Hierarchy? Identity=10, Contrast=8, Emotion=6, Specificity=4
 - FIRST 3 LINES (F, /10): How strong are the hook, anchor, and open loop individually?
-Total = R + H + F (/30)`;
+Total = R + H + F (/30)
+
+${ZAK_HOOK_ARSENAL}`;
       },
 
-      userMessage: (project, previousOutputs) => {
+      userMessage: (project, previousOutputs, peerOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
         const g3 = previousOutputs['gate3'] as Record<string, unknown> | undefined;
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
 
-        return `CONTEXT FROM PREVIOUS GATES:
+        return `=== CUSTOMER LANGUAGE EXTRACTION (Phase 1 — your ammunition) ===
+${peerOutputs['customer-language-extractor'] || 'Not available — extract language directly from Gate 2 data below'}
+
+CONTEXT FROM PREVIOUS GATES:
 ${g2 ? `\n=== AVATAR DEEP DIVE (Gate 2) — sub-avatars, angles, quote bank, voice ===\n${JSON.stringify(g2, null, 2).slice(0, 8000)}` : ''}
 ${g3 ? `\n=== ROOT CAUSE & MECHANISM (Gate 3) — root cause, belief error, mechanism ===\n${JSON.stringify(g3, null, 2).slice(0, 3000)}` : ''}
 ${g1 ? `\n=== PRODUCT INTELLIGENCE (Gate 1) — features, benefits, buyer psychology ===\n${JSON.stringify(g1, null, 2).slice(0, 3000)}` : ''}
 
-## MISSION: Generate 105+ hooks using 7 ZAK formulas
+## MISSION: Turn extracted customer language into 70+ hooks using 7 ZAK formulas
 
-For EACH sub-avatar (5) × EACH top angle (3 per avatar) × ALL 7 formulas = 105+ hooks minimum.
+IMPORTANT: The Customer Language Extraction above contains 70 pre-mined phrases across 7 categories (micro-specific moments, internal dialogue, relationship moments, humiliation moments, failed solutions, transformation language, trigger phrases) + top 10 ranked phrases. USE THESE as your primary hook ammunition. The top 10 phrases should appear in your top 20 scored hooks.
+
+Focus on the SELECTED SUB-AVATAR (the one provided in Strategic Context above). Generate hooks for this ONE avatar across its top 3 angles × ALL 7 formulas × 3-4 variations = 70+ hooks minimum.
 
 For each hook, provide the full 3 First Lines (hook, anchor, open loop).
 
@@ -138,7 +282,17 @@ Output valid JSON:
         "open_loop_strength": ""
       },
       "recommended_placement": "ad|advertorial_headline|email_subject|social",
-      "best_for": "which sub-avatar and why"
+      "best_for": "which sub-avatar and why",
+      "specificity_score": {
+        "types_present": ["numerical", "temporal", "sensory", "emotional", "identity", "outcome", "process"],
+        "count": 0,
+        "pass": true
+      },
+      "hook_stacking": {
+        "visual_hook": "what the viewer SEES (for image/video ads)",
+        "text_hook": "what appears as text overlay",
+        "audio_hook": "what the viewer HEARS (for video ads)"
+      }
     }
   ],
   "hooks_by_formula": {
@@ -150,7 +304,19 @@ Output valid JSON:
     "curiosity": 0,
     "identity": 0
   },
-  "total_hooks_generated": 0
+  "total_hooks_generated": 0,
+  "recommended_copy_formats": {
+    "problem_aware": "PAS|Problem Stack — best format for this avatar's awareness",
+    "solution_aware": "AIDA|BAB — best format for this awareness",
+    "product_aware": "4P|AIDA — best format for this awareness",
+    "format_reasoning": "why these formats match the pain/desire ratio from Gate 2"
+  },
+  "trigger_phrases_used": {
+    "fear": ["which fear trigger phrases were used in hooks"],
+    "curiosity": ["which curiosity trigger phrases were used"],
+    "identity": ["which identity trigger phrases were used"],
+    "pain": ["which pain trigger phrases were used"]
+  }
 }
 
 RULES:
@@ -162,7 +328,11 @@ RULES:
 - Pain hooks should outnumber curiosity hooks 2:1 (pain outperforms)
 - Score the top 20 HONESTLY — a 30/30 should be once-in-a-career
 - Use EXACT customer language from Gate 2 verbatim quotes
-- Respect locked terms from Brand DNA`;
+- Respect locked terms from Brand DNA
+- Every top-20 hook MUST score 4+ on the 7 Types of Specificity — under 3 = too generic
+- Top 20 hooks MUST include hook stacking (visual + text + audio) for multi-channel execution
+- Use trigger phrases from the ZAK Word Bank — tag which categories were used
+- Recommend copy format (PAS/AIDA/SPS/4P/BAB/Problem Stack) per awareness level based on Gate 2 pain/desire ratio`;
       },
     },
 
@@ -647,15 +817,20 @@ TARGET MARKET: ${project.targetMarket}
 TARGET LANGUAGE: ${project.targetLanguage}`;
     }
 
-    return `You are the Lead Copy Strategist at a $100M/year direct response agency. Your team of 6 specialists has produced their individual copy arsenal components. Your job: COMPILE them into a single, organized Copy Arsenal.
+    return `You are the Lead Copy Strategist at a $100M/year direct response agency. Your team of 7 specialists has produced their work in a 2-phase chain:
+- Phase 1: Customer Language Extraction (70 raw phrases from avatar deep dive)
+- Phase 2: Hook Crafting (105+ hooks built FROM the extracted language) + 5 parallel specialists (open loops, sensory, future pacing, bucket brigades, takeaway)
+
+Your job: COMPILE them into a single, organized Copy Arsenal.
 
 CRITICAL RULES:
 1. Do NOT throw away specialist work — integrate ALL of it
-2. Organize hooks BY SUB-AVATAR for easy access
-3. Verify the top 20 hook scores make sense — re-rank if needed
-4. Cross-reference: do open loops pair well with hooks? Do sensory descriptions match future pacing scenes?
-5. Flag any gaps: missing sub-avatar coverage, weak categories, voice inconsistencies
-6. Add a STRATEGIC SUMMARY: which pieces are strongest, recommended combinations, and which sub-avatar has the richest arsenal
+2. The customer language extraction is AMMUNITION — verify hooks actually USE those phrases
+3. Organize hooks BY SUB-AVATAR for easy access
+4. Verify the top 20 hook scores make sense — re-rank if needed
+5. Cross-reference: do open loops pair well with hooks? Do sensory descriptions match future pacing scenes?
+6. Flag any gaps: missing sub-avatar coverage, weak categories, voice inconsistencies
+7. Add a STRATEGIC SUMMARY: which pieces are strongest, recommended combinations, and which sub-avatar has the richest arsenal
 
 OUTPUT LANGUAGE: All copy in both ${project.sourceLanguage} and ${project.targetLanguage}.`;
   },
@@ -671,7 +846,10 @@ OUTPUT LANGUAGE: All copy in both ${project.sourceLanguage} and ${project.target
 
     return `Here are your specialists' outputs. Compile them into the unified Copy Arsenal.
 
-=== HOOK GENERATOR (105+ hooks, scored) ===
+=== CUSTOMER LANGUAGE EXTRACTION (70 phrases, 7 categories — Phase 1) ===
+${subAgentOutputs['customer-language-extractor'] || 'N/A'}
+
+=== HOOK CRAFTER (105+ hooks from extracted language — Phase 2) ===
 ${subAgentOutputs['hook-generator'] || 'N/A'}
 
 === OPEN LOOP WRITER (50 loops, 5 categories) ===
@@ -691,9 +869,20 @@ ${subAgentOutputs['takeaway-writer'] || 'N/A'}
 
 Compile into a single unified JSON wrapped in \`\`\`json code blocks:
 {
+  "customer_language_bank": {
+    "micro_specific_moments": [...top phrases...],
+    "internal_dialogue": [...],
+    "relationship_moments": [...],
+    "humiliation_moments": [...],
+    "failed_solution_language": [...],
+    "transformation_language": [...],
+    "trigger_phrases": [...],
+    "top_10_phrases": [...ranked by hook potential...],
+    "total_extracted": 70
+  },
   "hook_bank": {
     "hook_matrix": [...organized by sub-avatar...],
-    "top_20_scored": [...re-verified rankings...],
+    "top_20_scored": [...re-verified rankings — verify top 10 customer phrases appear...],
     "hooks_by_formula": { "question": 0, "statement": 0, "story": 0, "statistic": 0, "contradiction": 0, "curiosity": 0, "identity": 0 },
     "total_hooks_generated": 0
   },
@@ -748,17 +937,21 @@ Compile into a single unified JSON wrapped in \`\`\`json code blocks:
 
   reviewerPrompt: `You are an elite copy arsenal reviewer and scroll-stopping expert for $100M/year direct response brands. You have reviewed 10,000+ hooks and know what separates a 2% CTR from a 0.2% CTR.
 
+${EVOLVE_COHERENCE_CHAIN}
+
+${EVOLVE_EXECUTION_FRAMEWORK}
+
 DIMENSIONS (each /10, total /100, threshold >=75%):
 1. Hook Volume & Coverage: >=105 hooks? All 5 sub-avatars x angles x 7 formulas represented? No gaps?
 2. Hook Formula Mastery: Each of the 7 formula types used correctly? No formula confusion? Variety within each formula?
-3. Customer Language Fidelity: Hooks sound like real people, not ads? Verbatim language from Gate 2 quote bank used? Voice profile matched?
-4. EVOLVE Scorecard Rigor: Top 20 scored honestly? Reptilian triggers identified correctly? Attention hierarchy applied? 3 First Lines evaluated?
+3. Customer Language Fidelity: Hooks sound like real people, not ads? Verbatim language from Gate 2 quote bank used? Voice profile matched? EXACT sub-avatar names used (not renamed)?
+4. EVOLVE Scorecard + ZAK Specificity: Top 20 scored honestly? Reptilian triggers identified correctly? Attention hierarchy applied? 3 First Lines evaluated? 3 Hook Requirements met? Every top-20 hook scores 4+ on 7 Types of Specificity (numerical/temporal/sensory/emotional/identity/outcome/process)? Hook stacking present (visual+text+audio)?
 5. Open Loop Quality: 50 total across 5 categories? Each creates irresistible tension? Payoffs deliverable? Customer language used?
-6. Sensory Language Depth: 5 senses x 2 states x 5 examples = 50? Visceral and specific? Pain/transformation contrast stark? Internal sensations included?
+6. Sensory Language Depth: 5 senses x 2 states x 5 examples = 50? Visceral and specific? Pain/transformation contrast stark? Internal sensations included? SHOW don't TELL applied?
 7. Future Pacing Power: 3 scenes? All 6 ZAK elements per scene? 150-200 words each? Would reader get emotional? Sensory-rich?
 8. Bucket Brigade Voice Match: 70 phrases across 7 categories? 2-6 words each? Match avatar vocabulary and tone? No cliches?
-9. Takeaway Authenticity: 25 blocks across 5 categories? Disqualifiers genuine? Qualifiers specific to sub-avatars? Scarcity honest?
-10. Arsenal Cohesion: Do all pieces work together? Could a copywriter grab any piece and use it immediately? Organized by sub-avatar?
+9. 7 Reasons Ads Fail Check: No hooks lacking emotional impact? Curiosity created? Suspense maintained? 6th grade reading level? Show don't tell? Objections addressed? Awareness levels not skipped?
+10. Coherence Lock: Mechanism name EXACT from Gate 3? Root cause EXACT? Emotional intensity NOT dropped from Gate 2? Sub-avatar details NOT lost? Desire elevation NOT dropped?
 
 RED FLAGS (auto-deduct 2 points each from total):
 - Generic hooks that could apply to ANY product
@@ -769,6 +962,9 @@ RED FLAGS (auto-deduct 2 points each from total):
 - Future pacing scenes under 100 words or missing ZAK elements
 - Bucket brigades over 6 words
 - Voice mismatch between pieces
+- Top-20 hooks scoring under 3 on the 7 Types of Specificity
+- No copy format recommendation per awareness level
+- Missing trigger phrase categorization
 
 Respond in valid JSON:
 {

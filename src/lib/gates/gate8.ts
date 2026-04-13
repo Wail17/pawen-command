@@ -1,192 +1,255 @@
 // ============================================================
-// GATE 8 — CREATIVE GENERATION
-// Single-agent flow: fal.ai image generation configs + vision review
-// No sub-agents — uses generatorPrompt/userMessage pattern directly
+// GATE 8 — STATIC AD GENERATION (Studio Engine)
+// Takes Gate 7 preset briefs + user selections (preset, headline,
+// sub-avatar, awareness) and generates final fal.ai configs.
+// Full creative context injection — zero information loss.
+// Pre-generation congruence validation built in.
 // ============================================================
 
 import { GateConfigDef } from './types';
+import { buildCreativeContext, serializeCreativeContext } from './creativeContextAggregator';
+import { EVOLVE_COHERENCE_CHAIN } from './evolveFrameworks';
+import { ZAK_IMAGE_AD_FRAMEWORK } from './zakFrameworks';
 
 const gate8: GateConfigDef = {
   id: 'gate8',
-  description: 'Generate static ads via fal.ai + vision review',
+  description: 'Static Ad Generation Studio — takes preset selections from Gate 7, generates final fal.ai configs with full context + congruence lock',
 
-  // No sub-agents — single-agent flow
+  // No sub-agents — single-agent flow that consumes Gate 7 presets
+  // The real selection happens in the UI (StaticAdStudio component)
 
-  generatorPrompt: (project) => `You are coordinating AI image generation for Meta Ad static creatives using fal.ai.
+  generatorPrompt: (project, _subAgentOutputs, previousOutputs) => {
+    const ctx = buildCreativeContext(project, previousOutputs || {});
 
-PRODUCT: ${project.name || 'See description'}
-TARGET MARKET: ${project.targetMarket}
-TARGET LANGUAGE: ${project.targetLanguage}
+    return `You are the final-stage AI image generation coordinator for a $100M/year direct response brand. You take validated creative briefs from the Static Ad Studio (Gate 7) and produce PRODUCTION-READY fal.ai generation configurations.
 
-## MISSION
-Take the validated image briefs from Gate 7 and create complete fal.ai generation configurations. For each image brief, produce:
+## YOUR MISSION
+Transform each selected brief into multiple fal.ai generation configs across formats (feed 1:1, story 9:16, vertical 4:5). Each config must be so specific that the generated image requires ZERO iteration.
 
-1. **Model selection** — choose the best fal.ai model:
-   - "fal-ai/flux-pro/v1.1" — photorealistic product shots, lifestyle imagery, realistic scenes
-   - "fal-ai/flux/dev" — creative/artistic images, abstract concepts, stylized visuals
+## GENERATION QUALITY RULES
 
-2. **Generation prompt** — detailed, specific prompt that captures:
-   - Subject and composition
-   - Lighting and mood
-   - Color palette (aligned with brand)
-   - Style and aesthetic
-   - Camera angle / perspective
-   - Background and environment
+### Prompt Engineering (for fal.ai flux models)
+1. Start with the PRIMARY subject and its state/action
+2. Add ENVIRONMENT details (location, setting, time of day)
+3. Specify LIGHTING (direction, quality, color temperature)
+4. Define MOOD/ATMOSPHERE (emotional tone of the scene)
+5. Include STYLE keywords (photographic, cinematic, editorial, studio, etc.)
+6. Add CAMERA details (lens, angle, depth of field)
+7. Specify TECHNICAL quality (8K, professional, award-winning, etc.)
+8. End with COLOR GRADING notes
 
-3. **Negative prompt** — elements to AVOID:
-   - Text/watermarks (text overlay added post-generation)
-   - Deformed anatomy, extra limbs
-   - Low quality, blurry, pixelated
-   - Brand-inappropriate content
+### Model Selection
+- "fal-ai/flux-pro/v1.1" → photorealistic: lifestyle, product shots, testimonial-style, before/after with real people
+- "fal-ai/flux/dev" → creative/artistic: abstract concepts, data visualizations, mood pieces, stylized illustrations
 
-4. **Dimensions** — based on ad placement:
-   - Feed (1:1): width 1080, height 1080
-   - Story/Reel (9:16): width 1080, height 1920
+### Format-Specific Rules
+- Feed (1080×1080): Centered composition, key elements in center 70%
+- Story (1080×1920): Vertical composition, top 40% for hook visual, bottom 30% for text
+- Vertical (1080×1350): 4:5 ratio, balanced composition, works well for feed + explore
 
-5. **Generation parameters**:
-   - guidance_scale: 7.5 (balanced realism) or 3.5 (more creative freedom)
-   - num_images: 2 (generate 2 variations per config)
-   - seed: null (for variety)
+## CONGRUENCE LOCK
+- Product: ${project.name}
+- Market: ${project.targetMarket}
+- Language: ${project.targetLanguage}
+- Awareness: ${project.selectedFunnel || 'problem_aware'}
+- Brand colors: ${ctx.brand.color_problem} (problem) | ${ctx.brand.color_solution} (solution) | ${ctx.brand.color_brand} (brand)
+- Visual metaphor: ${ctx.brand.visual_metaphor}
+- Image rules: ${ctx.brand.image_rules.join('; ')}
 
-6. **Vision review prompt** — for each image, generate a prompt to evaluate the generated output:
-   - Does it match the brief intent?
-   - Is the product accurately represented?
-   - Is the composition effective for a scroll-stopping ad?
-   - Are there AI artifacts or quality issues?
-
-## OUTPUT FORMAT
-Output valid JSON wrapped in \`\`\`json code blocks:
-{
-  "generation_configs": [
-    {
-      "id": "gen_1_feed",
-      "source_brief_id": "brief_1",
-      "format": "feed_1x1",
-      "model": "fal-ai/flux-pro/v1.1",
-      "prompt": "Complete, detailed generation prompt",
-      "negative_prompt": "Complete negative prompt",
-      "width": 1080,
-      "height": 1080,
-      "guidance_scale": 7.5,
-      "num_images": 2,
-      "seed": null,
-      "vision_review_prompt": "Specific evaluation criteria for this image"
-    },
-    {
-      "id": "gen_1_story",
-      "source_brief_id": "brief_1",
-      "format": "story_9x16",
-      "model": "fal-ai/flux-pro/v1.1",
-      "prompt": "Complete, detailed generation prompt (adjusted for vertical)",
-      "negative_prompt": "Complete negative prompt",
-      "width": 1080,
-      "height": 1920,
-      "guidance_scale": 7.5,
-      "num_images": 2,
-      "seed": null,
-      "vision_review_prompt": "Specific evaluation criteria for this image"
-    }
-  ],
-  "post_processing": {
-    "text_overlay_required": true,
-    "overlay_instructions": "Text must be added via separate tool — fal.ai does not reliably render text in images",
-    "quality_checks": [
-      "Resolution >= 1080px on shortest side",
-      "No visible AI artifacts (extra fingers, warped text, melted edges)",
-      "Product clearly visible and recognizable",
-      "Brand color palette present",
-      "Composition has clear focal point",
-      "Mobile-friendly — key elements visible at small size"
-    ]
+## OUTPUT: Return ONLY valid JSON wrapped in \`\`\`json code blocks.`;
   },
-  "vision_review_summary": {
-    "global_criteria": [
-      "All images feel like one cohesive campaign",
-      "Product representation consistent across all variants",
-      "No image contradicts the brand positioning",
-      "Each image has scroll-stop potential"
-    ]
-  },
-  "total_configs": 0,
-  "total_images_to_generate": 0
-}
-
-RULES:
-- Minimum 12 generation configs (6 briefs x 2 formats)
-- num_images: 2 per config = 24+ total image variations
-- Text overlays are added post-generation, NOT in the prompt
-- Seed: null for maximum variety
-- Each prompt must be 50-150 words — specific enough to guide, not so long it confuses
-- Negative prompts should always include: "text, watermark, logo, blurry, low quality, deformed"
-- Vision review prompts must be specific to each image's intent`,
 
   userMessage: (project, previousOutputs) => {
-    let msg = `Prepare all fal.ai image generation configs from the validated image briefs.\n`;
+    const ctx = buildCreativeContext(project, previousOutputs);
+    const g7 = previousOutputs['gate7'] as Record<string, unknown> | undefined;
 
-    if (previousOutputs['gate7']) {
-      msg += `\n=== IMAGE AD BRIEFS (Gate 7) — source briefs for generation ===\n${JSON.stringify(previousOutputs['gate7'])}`;
-    }
-    if (previousOutputs['gate1']) {
-      msg += `\n\n=== PRODUCT INTEL (Gate 1) — product details and reference images ===\n${JSON.stringify(previousOutputs['gate1'])}`;
-    }
-    if (previousOutputs['brand-dna']) {
-      msg += `\n\n=== BRAND DNA — visual identity, colors, style constraints ===\n${JSON.stringify(previousOutputs['brand-dna'])}`;
+    // Build a focused context block (not full serialize — Gate 7 already has the brief details)
+    const contextBlock = `## CREATIVE CONTEXT SUMMARY
+Target: "${ctx.sub_avatar.name}" (${ctx.sub_avatar.nickname})
+Awareness: ${ctx.funnel.label} — ${ctx.funnel.strategy}
+Mechanism: ${ctx.brand.mechanism_name}
+Product: ${ctx.product.name} ${ctx.product.price ? `(${ctx.product.price} ${ctx.product.currency || ''})` : ''}
+Visual metaphor: ${ctx.brand.visual_metaphor}
+Colors: Problem=${ctx.brand.color_problem} | Solution=${ctx.brand.color_solution} | Brand=${ctx.brand.color_brand}
+
+## SWIPE VOCABULARY
+${ctx.swipe?.power_words.length ? `Power words: ${ctx.swipe.power_words.join(', ')}` : ''}
+${ctx.sub_avatar.verbatim_quotes.slice(0, 5).map(q => `  • "${q}"`).join('\n')}`;
+
+    let msg = `${contextBlock}\n\n`;
+
+    if (g7) {
+      msg += `## STATIC AD STUDIO BRIEFS (Gate 7 — all 8 presets)
+${JSON.stringify(g7, null, 2)}
+
+`;
     }
 
-    msg += `\n\nGenerate the complete set of fal.ai configs. Wrap output in \`\`\`json code blocks.`;
+    // Check for user selections stored in humanDecisions
+    const g7Output = previousOutputs['gate7_decisions'] as Record<string, unknown> | undefined;
+    if (g7Output) {
+      msg += `## USER SELECTIONS (from Static Ad Studio UI)
+${JSON.stringify(g7Output, null, 2)}
+
+`;
+    }
+
+    msg += `## YOUR TASK
+Generate PRODUCTION-READY fal.ai configs for ALL briefs in the Static Ad Studio package.
+
+For each brief, produce 3 format variants:
+1. Feed (1080×1080) — square, Meta feed placement
+2. Story (1080×1920) — vertical, Meta/IG story placement
+3. Vertical (1080×1350) — 4:5 ratio, Meta feed + explore
+
+Output:
+\`\`\`json
+{
+  "generation_batch": {
+    "metadata": {
+      "total_configs": 0,
+      "total_images": 0,
+      "awareness_level": "${project.selectedFunnel || 'problem_aware'}",
+      "sub_avatar": "${ctx.sub_avatar.name}",
+      "generated_at": "ISO"
+    },
+    "configs": [
+      {
+        "id": "gen_ba-1_feed",
+        "source_preset": "before_after",
+        "source_brief_id": "ba-1",
+        "brief_name": "brief descriptive name",
+        "format": "feed_1x1",
+
+        "model": "fal-ai/flux-pro/v1.1",
+        "prompt": "PRODUCTION-QUALITY prompt (100-180 words). Include: subject, action, environment, lighting (direction + quality + color temp), mood, style, camera (lens + angle + DoF), quality keywords, color grading. NO text in image.",
+        "negative_prompt": "text, watermark, logo, blurry, deformed, low quality, bad anatomy, extra limbs, cropped, worst quality, jpeg artifacts, ugly, duplicate, morbid, mutilated",
+        "width": 1080,
+        "height": 1080,
+        "guidance_scale": 7.5,
+        "num_images": 2,
+        "seed": null,
+
+        "text_overlays": {
+          "headline": "final headline text (from selected option A/B/C)",
+          "subheadline": "optional",
+          "cta": "optional CTA text",
+          "body": "optional body text"
+        },
+
+        "overlay_design": {
+          "headline_position": "top|center|bottom|overlay",
+          "text_alignment": "left|center|right",
+          "text_background": "none|solid|gradient|blur",
+          "headline_font_style": "bold sans-serif|serif|handwritten",
+          "headline_color": "#FFFFFF",
+          "headline_shadow": true,
+          "max_text_coverage_pct": 25
+        },
+
+        "vision_review_prompt": "Evaluate: 1) Does the image match the ${ctx.sub_avatar.name} sub-avatar's world? 2) Does the composition follow [preset] rules? 3) Are brand colors present? 4) Is there a clear focal point? 5) Would this stop the scroll? Score 1-10.",
+
+        "awareness_check": "Does this image match ${ctx.funnel.label} awareness? YES/NO and why"
+      }
+    ],
+
+    "post_processing": {
+      "text_overlay_tool": "Text must be added via Figma/Canva or text-overlay API — fal.ai does NOT render text reliably",
+      "quality_checks": [
+        "Resolution ≥ 1080px shortest side",
+        "No AI artifacts (extra fingers, warped edges, melted objects)",
+        "Product accurately represented (if applicable)",
+        "Brand color palette present in image",
+        "Clear focal point visible at mobile thumbnail size",
+        "Composition matches preset layout rules",
+        "Image emotional tone matches awareness level"
+      ],
+      "brand_consistency_checks": [
+        "Color grading consistent across all images in same preset",
+        "Visual metaphor (${ctx.brand.visual_metaphor}) referenced where appropriate",
+        "No visual elements from competitor territory",
+        "Product representation matches real product (if Shopify data available)"
+      ]
+    },
+
+    "testing_plan": {
+      "phase_1_presets": ["which 2-3 presets to test first (highest predicted impact)"],
+      "phase_1_headlines": ["which headline variant (A/B/C) per preset"],
+      "phase_2_expansion": "after finding winners, which presets/headlines to test next",
+      "budget_split": "recommended budget allocation across preset types"
+    }
+  }
+}
+\`\`\`
+
+RULES:
+- EVERY brief from Gate 7 gets 3 format variants = minimum 72 configs (24 briefs × 3 formats)
+- num_images: 2 per config = 144+ total image variations
+- Prompts MUST be 100-180 words — SPECIFIC and production-quality
+- negative_prompt: always include the full standard negative set
+- Text overlays are added POST-generation — NEVER include text in the fal.ai prompt
+- Each prompt must reference the specific PRESET rules (before/after = split screen, social proof = quote card, etc.)
+- Vision review prompts must be specific to the brief's intent AND awareness level
+- All text overlays in ${project.targetLanguage}
+- guidance_scale: 7.5 for photorealistic, 3.5 for creative/artistic
+- Model selection must match visual style: flux-pro for realistic, flux/dev for creative`;
+
     return msg;
   },
 
   reviewerPrompt: `You are a visual quality reviewer and AI image generation specialist for performance marketing static ads.
 
-DIMENSIONS (each /10, total /70, threshold >=70%):
-1. Prompt Quality: Are generation prompts specific, detailed, and likely to produce good results? Do they describe composition, lighting, mood, and style?
-2. Model Selection: Is the correct fal.ai model chosen for each image type? Photorealistic vs creative matched appropriately?
-3. Negative Prompt Coverage: Do negative prompts adequately prevent common AI artifacts and unwanted elements?
-4. Format Coverage: Both feed (1:1) and story (9:16) formats generated for each brief? Prompts adjusted for aspect ratio?
-5. Brand Alignment: Do prompts incorporate brand colors, visual identity, and campaign aesthetic?
-6. Vision Review Prompts: Are evaluation prompts specific enough to catch quality issues? Do they reference the original brief intent?
-7. Post-Processing Plan: Text overlay instructions clear? Quality checks comprehensive?
+${EVOLVE_COHERENCE_CHAIN}
 
-Respond in valid JSON:
-\`\`\`json
-{
-  "score": 0,
-  "maxScore": 70,
-  "dimensions": [
-    { "name": "Prompt Quality", "score": 0, "maxScore": 10, "feedback": "" }
-  ],
-  "feedback": "",
-  "passed": false
-}
-\`\`\``,
+${ZAK_IMAGE_AD_FRAMEWORK}
 
-  reviewCriteria: `Score each dimension /10. Prompts must be specific and actionable — vague prompts = low score. Total /70, pass >= 70%.`,
+DIMENSIONS (each /10, total /100, threshold ≥70%):
+1. Prompt Specificity: Are prompts 100-180 words with subject, environment, lighting, mood, camera, style? No vague descriptions? Ugly vs polished style correctly matched to awareness level and concept type?
+2. Model Selection: Correct model for each visual style? Photorealistic vs creative matched appropriately? Visual scoring criteria applied (thumb-stop power, brand consistency, emotional resonance)?
+3. Negative Prompt Coverage: Standard negatives always present? Preset-specific negatives included?
+4. Format Coverage: All 3 formats (feed/story/vertical) per brief? Composition adapted for each ratio?
+5. Preset Rule Adherence: Does each prompt follow its preset's visual composition rules? Split-screen for Before/After? Quote-card for Social Proof?
+6. Brand Alignment: Brand colors in prompts? Visual metaphor referenced? Image rules followed?
+7. Text Overlay Specs: Headline position, alignment, background all specified? Design system consistent?
+8. Awareness Consistency: Do all prompts match the selected funnel level? No awareness drift? No skipped awareness levels?
+9. Coherence Lock: Product descriptor EXACT from Brand DNA? Visual identity aligned with Gate 2 sub-avatar? Text overlays use EXACT mechanism name from Gate 3?
+10. Testing Plan: Logical phase 1/2 split? Budget allocation sensible? Based on predicted performance?
+
+Respond in valid JSON with score, maxScore (100), dimensions array, feedback, and passed boolean.`,
+
+  reviewCriteria: `Score each dimension /10. Missing formats = low score. Vague prompts = instant fail. Awareness drift = critical issue. Total /100, pass ≥ 70%.`,
 
   reviewThreshold: 70,
 
   hasCongruenceCheck: true,
-  congruencePrompt: `Brand DNA Congruence Agent for fal.ai generation configs.
+  congruencePrompt: `Brand DNA Congruence Agent for Static Ad Generation configs.
 
-CHECK (visual consistency with brand):
-1. VISUAL IDENTITY: Do generation prompts reference brand colors, visual style, and aesthetic from Brand DNA?
-2. PRODUCT ACCURACY: Do prompts describe the product accurately based on Gate 1 product profile?
-3. CAMPAIGN CONSISTENCY: Will all generated images feel like one cohesive campaign? Consistent palette, mood, style?
-4. BRAND POSITIONING: Do visual concepts align with brand positioning? No elements that contradict brand identity?
-5. FORBIDDEN ELEMENTS: No visual elements from Brand DNA's "never use" list? No competitor visual territories?
+CHECK ALL generation configs:
+1. VISUAL IDENTITY: Do prompts reference brand colors (Problem/Solution/Brand)? Visual metaphor maintained? Image rules from Brand DNA followed?
+2. PRODUCT ACCURACY: If product is visible in the prompt, does it match real product data (Shopify/manual)?
+3. CAMPAIGN CONSISTENCY: Will all generated images feel like ONE cohesive campaign? Consistent palette, mood, style across presets?
+4. AWARENESS LOCK: Does every config's visual tone match the selected awareness level? No drift between presets?
+5. TEXT OVERLAY CONGRUENCE: Do headlines use locked mechanism name? Customer language? No forbidden words?
+6. PRESET INTEGRITY: Does each config follow its preset's specific visual rules?
 
-Respond in valid JSON:
-\`\`\`json
+Score each dimension 0-100. Output valid JSON:
 {
   "score": 0,
-  "dimensions": [
-    { "name": "Visual Identity", "score": 0, "maxScore": 20, "feedback": "" }
+  "passed": true,
+  "dimensions": {
+    "visual_identity": 0,
+    "product_accuracy": 0,
+    "campaign_consistency": 0,
+    "awareness_lock": 0,
+    "text_overlay_congruence": 0,
+    "preset_integrity": 0
+  },
+  "driftReport": [
+    { "location": "config_id / field", "expected": "what Brand DNA requires", "found": "what was written", "severity": "CRITICAL|WARNING|MINOR" }
   ],
-  "driftReport": [],
-  "verdict": "pass|fail",
-  "alignmentInstructions": ""
-}
-\`\`\``,
+  "verdict": "CONGRUENT|NEEDS_ALIGNMENT|REBUILD",
+  "alignmentInstructions": "specific fix instructions"
+}`,
   congruenceThreshold: 80,
 };
 

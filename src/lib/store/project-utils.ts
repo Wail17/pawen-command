@@ -12,7 +12,7 @@ const ALL_GATES: GateId[] = [
 ];
 
 const GATE_LABELS: Record<GateId, string> = {
-  'gate1': 'Product Intelligence',
+  'gate1': 'Avatar Excavation',
   'gate2': 'Avatar Deep Dive',
   'gate3': 'Root Cause & Mechanism',
   'brand-dna': 'Brand DNA',
@@ -41,8 +41,6 @@ export { ALL_GATES, GATE_LABELS, GATE_SHORT_NAMES };
 
 export function createProject(
   name: string,
-  productUrl: string,
-  productDescription: string,
   targetLanguage: string = 'en-US',
   targetMarket: string = 'United States',
 ): Project {
@@ -53,11 +51,14 @@ export function createProject(
     gateStatuses[gate] = gate === 'gate1' ? 'available' : 'locked';
   }
 
+  // The new pipeline starts from CORE AVATAR (Gate 1), not from product
+  // research. productUrl/productDescription/niche are populated later
+  // by the Core Avatar form inside Gate 1.
   return {
     id: uuid(),
     name,
-    productUrl,
-    productDescription,
+    productUrl: '',
+    productDescription: '',
     targetLanguage,
     sourceLanguage: 'en-US',
     targetMarket,

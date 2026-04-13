@@ -120,10 +120,58 @@ export default function Pipeline({ project, activeGate }: PipelineProps) {
       {/* Footer links */}
       <div className="p-4 border-t border-border space-y-2">
         <Link
+          href={`/project/${project.id}/competitor-intel`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-orange"
+        >
+          🕵️ Competitor Intel
+        </Link>
+        <Link
           href={`/project/${project.id}/brand-dna`}
           className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-teal"
         >
           🧬 Brand DNA
+        </Link>
+        <Link
+          href={`/project/${project.id}/templates`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-orange"
+        >
+          📐 Templates
+        </Link>
+        <Link
+          href={`/project/${project.id}/emails`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-orange"
+        >
+          📧 Email Sequences
+        </Link>
+        <Link
+          href={`/project/${project.id}/offer-stack`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-teal"
+        >
+          💰 Offer Stack
+        </Link>
+        <Link
+          href={`/project/${project.id}/ugc-briefs`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-orange"
+        >
+          🎬 UGC Briefs
+        </Link>
+        <Link
+          href={`/project/${project.id}/carousels`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-teal"
+        >
+          🎠 Carousels
+        </Link>
+        <Link
+          href={`/project/${project.id}/calculator`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-orange"
+        >
+          🧮 ROAS Calculator
+        </Link>
+        <Link
+          href={`/project/${project.id}/theme-editor`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-teal"
+        >
+          🎨 Theme Editor
         </Link>
         <Link
           href="/"

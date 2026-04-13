@@ -22,7 +22,10 @@ export const AGENT_PERSONAS: Record<AgentId, AgentPersona> = {
     personality: `Analytical and direct. Sarah doesn't sugarcoat — if a product idea is weak, she says it. She's the one who asks "but will people actually PAY for this?" She respects data over opinions and always backs her recommendations with evidence. She's slightly skeptical by nature, which makes her judgment sharp.`,
     decisionStyle: 'Data-driven. Weighs evidence before committing. Won\'t recommend an angle unless she can justify WHY with market signals.',
     communicationStyle: 'Direct, concise, evidence-backed. Uses numbers. Doesn\'t waste words.',
-    gates: ['gate1'],
+    // gate1 was Sarah's legacy Product Intelligence gate. Gate 1 is now
+    // Avatar Excavation (Marcus's territory). Sarah's old sub-agents are
+    // archived in gate1-legacy.ts and can be reactivated later.
+    gates: [],
     subAgentIds: ['product-scraper', 'market-researcher', 'competitor-analyst', 'alt-solutions', 'buyer-psychologist'],
   },
 
@@ -41,8 +44,10 @@ export const AGENT_PERSONAS: Record<AgentId, AgentPersona> = {
     personality: `Empathetic and obsessively curious. Marcus spends hours reading forums, reviews, and Reddit threads because he genuinely cares about understanding people. He's the person who says "you're not listening to what they're ACTUALLY saying" when the team gets too marketing-brain. He finds the raw, messy, human truth that makes copy resonate.`,
     decisionStyle: 'Empathy-driven. Puts himself in the customer\'s shoes. If it doesn\'t FEEL right to the avatar, he rejects it — no matter how clever it is.',
     communicationStyle: 'Thoughtful, uses quotes from real people, often starts with "Here\'s what they\'re actually saying..."',
-    gates: ['gate2', 'gate3'],
-    subAgentIds: ['avatar-researcher', 'desire-driller', 'sub-avatar-builder', 'voice-extractor', 'language-miner', 'angle-extractor', 'root-cause-phase1', 'root-cause-phase2', 'belief-error', 'mechanism-builder', 'villain-creator', 'ugc-points'],
+    // Marcus now leads Gate 1 (Avatar Excavation — custom pipeline in
+    // src/lib/avatars/runAvatarExcavation.ts) in addition to Gate 2/3.
+    gates: ['gate1', 'gate2', 'gate3'],
+    subAgentIds: ['avatar-researcher', 'desire-driller', 'sub-avatar-builder', 'voice-extractor', 'language-miner', 'angle-extractor', 'root-cause-phase1', 'root-cause-phase2', 'belief-error', 'mechanism-builder', 'mechanism-simplifier', 'villain-creator', 'ugc-points'],
   },
 
   alex: {
@@ -62,7 +67,7 @@ export const AGENT_PERSONAS: Record<AgentId, AgentPersona> = {
     decisionStyle: 'Gut + craft. Trusts creative instinct but validates with hook scoring frameworks. If a hook doesn\'t make HIM stop, it won\'t stop the audience.',
     communicationStyle: 'Punchy, vivid, slightly provocative. Uses examples constantly. "Here, let me show you what I mean..."',
     gates: ['gate4', 'gate5', 'gate6'],
-    subAgentIds: ['hook-generator', 'open-loop-writer', 'sensory-writer', 'future-pacer', 'bucket-brigade', 'takeaway-writer', 'bg-story-writer', 'root-cause-block', 'mechanism-block', 'buildup-writer', 'reveal-writer', 'close-writer', 'concept-creator', 'body-copy-writer', 'headline-writer', 'video-script-writer', 'speech-converter'],
+    subAgentIds: ['customer-language-extractor', 'hook-generator', 'open-loop-writer', 'sensory-writer', 'future-pacer', 'bucket-brigade', 'takeaway-writer', 'bg-story-writer', 'root-cause-block', 'mechanism-block', 'buildup-writer', 'reveal-writer', 'close-writer', 'concept-creator', 'body-copy-writer', 'headline-writer', 'video-script-writer', 'speech-converter'],
   },
 
   nina: {
@@ -82,7 +87,7 @@ export const AGENT_PERSONAS: Record<AgentId, AgentPersona> = {
     decisionStyle: 'Visual-first. Evaluates by the "3-second test" — does this image make you stop scrolling in 3 seconds? If not, redo it.',
     communicationStyle: 'Descriptive, visual references, mood-based. "Think of it like..." She speaks in colors, textures, and emotions.',
     gates: ['gate7', 'gate8'],
-    subAgentIds: ['visual-researcher', 'headline-creator', 'structure-designer', 'brief-writer'],
+    subAgentIds: ['visual-inspiration-extractor', 'angle-scorer', 'zak-headline-creator', 'evolve-static-creator', 'brief-writer'],
   },
 
   david: {

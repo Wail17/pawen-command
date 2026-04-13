@@ -2,6 +2,9 @@
 // PAWEN COMMAND CENTER — Core Types
 // ============================================================
 
+import type { CoreAvatarInput, AvatarRunResult, SourceConfig } from '../avatars/types';
+import type { ReverseEngineeredFunnel } from '../competitor/types';
+
 // === PROJECT ===
 
 export interface Project {
@@ -19,7 +22,188 @@ export interface Project {
   gateStatuses: Record<GateId, GateStatus>;
   brandDNA: BrandDNA | null;
   startAnywhereMode: boolean;
+
+  // --- Avatar Excavation (Gate 1, new pipeline) ---
+  // Optional for backward compatibility with existing projects.
+  coreAvatarInput?: CoreAvatarInput;       // human-provided input
+  avatarSourceConfig?: SourceConfig;       // per-source toggles
+  avatarRunResult?: AvatarRunResult;       // final sub-avatars + angles
+
+  // --- Selected sub-avatar (locked in after Gate 1, drives Gates 2-9) ---
+  // Once Gate 1 produces N candidate sub-avatars, the human picks ONE to
+  // explore. That pick is propagated to every downstream gate so the whole
+  // pipeline stays coherent (avoiding the bug where each gate rebuilt its
+  // own sub-avatars from scratch).
+  selectedSubAvatarId?: string;
+
+  // --- Funnel type (chosen after Gate 1, before Brand DNA / Gate 2) ---
+  // Determines the overall awareness funnel: where the prospect sits on
+  // Schwartz's awareness ladder. All downstream gates adapt their copy,
+  // hooks, and angles to this funnel type.
+  selectedFunnel?: FunnelType;
+
+  // --- Ad Performance (real metrics fed back into learning engine) ---
+  adPerformance?: AdPerformance[];
+
+  // --- Shopify product data (auto-imported, drives entire pipeline) ---
+  // Structured product intelligence pulled from a Shopify store URL.
+  // Every downstream gate reads this for real prices, features, images,
+  // reviews, variants — no more generic placeholders.
+  shopifyData?: ShopifyProductData;
+
+  // --- Competitor Intelligence (Gate 1.1) ---
+  // Stores reverse-engineered funnel data and/or cloned funnel assets.
+  competitorIntel?: {
+    // Full reverse-engineered funnel — stored whole so Gate 1 can promote
+    // it into a real SubAvatarV2 without losing copy_arsenal / mechanism /
+    // creative_strategy / insights.
+    reverseEngineered?: ReverseEngineeredFunnel & { injected_at: string };
+    clonedFunnel?: Record<string, unknown>;
+  };
+
+  // --- Reference Ads (winning static ads the user uploads for Gate 7 inspiration) ---
+  referenceAds?: AnalyzedAd[];
 }
+
+// === ANALYZED AD (Claude vision analysis of uploaded reference images) ===
+
+export interface AnalyzedAd {
+  id: string;
+  imageDataUrl: string;           // base64 data URL (thumbnail for display)
+  analyzedAt: string;
+  headline: string;
+  visual_description: string;     // what the viewer SEES (100+ words)
+  layout_structure: string;       // how elements are arranged
+  color_palette: string[];        // hex colors
+  mood: string;
+  format_type: string;            // static_graphic|product_photo|native_style|quote_text|ugc_image|meme_style|etc
+  why_it_works: string;           // psychological analysis
+  pattern_name: string;           // reusable pattern (e.g. "transformation", "comparison", "subversion")
+  target_emotion: string;
+  copywriting_elements: string;   // headline style, CTA, subtext
+}
+
+// === SHOPIFY PRODUCT DATA ===
+// Structured product intelligence pulled from Shopify's public JSON endpoints.
+// Stored on Project, injected into every gate prompt as productContext.
+
+export interface ShopifyProductData {
+  // Core info
+  storeUrl: string;
+  productUrl: string;
+  productTitle: string;
+  productDescription: string;         // plain text, HTML stripped
+  productDescriptionHtml?: string;    // original HTML
+
+  // Pricing
+  price: string | null;               // main variant price
+  compareAtPrice: string | null;      // crossed-out "was" price
+  currency: string;                   // USD, EUR, etc. (inferred from store)
+  pricePosition?: 'budget' | 'mid' | 'premium';
+
+  // Product details
+  vendor: string;
+  productType: string;                // Shopify product type
+  tags: string[];
+  productFormat?: string;             // pill, cream, app, ebook, device, etc.
+
+  // Variants
+  variants: ShopifyVariant[];
+
+  // Images
+  images: ShopifyImage[];
+
+  // Reviews (scraped from product page)
+  reviews: ShopifyReviewData[];
+  reviewStats?: {
+    averageRating: number;
+    totalReviews: number;
+    ratingDistribution?: Record<number, number>; // 1-5 star counts
+  };
+
+  // Metadata
+  importedAt: string;                 // ISO
+  shopifyProductId?: number;
+}
+
+export interface ShopifyVariant {
+  title: string;
+  price: string;
+  compareAtPrice: string | null;
+  sku: string;
+  available: boolean;
+}
+
+export interface ShopifyImage {
+  src: string;
+  alt: string | null;
+}
+
+export interface ShopifyReviewData {
+  author: string;
+  rating: number;
+  title: string;
+  body: string;
+  date: string;
+}
+
+// === AD PERFORMANCE (real metrics from Meta Ads) ===
+// Fed back into learning engine as the ultimate signal.
+// Agents see what actually converts, not just what scores well.
+
+export interface AdPerformance {
+  id: string;
+  adName: string;
+  funnel: string;
+  // Core metrics
+  impressions: number;
+  clicks: number;
+  ctr: number;             // click-through rate %
+  cpc: number;             // cost per click
+  cpa: number;             // cost per acquisition
+  roas: number;            // return on ad spend
+  spend: number;
+  conversions: number;
+  // Context
+  dateRange: string;       // "2026-03-01 to 2026-03-15"
+  notes: string;
+  addedAt: string;
+}
+
+export type FunnelType =
+  | 'full_unaware'       // prospect doesn't know they have a problem
+  | 'problem_aware'      // knows the pain, not the solution
+  | 'solution_aware'     // knows solutions exist, doesn't know yours
+  | 'product_aware'      // knows your product, hasn't decided
+  | 'most_aware'         // ready to buy, just needs the offer
+  | 'retargeting';       // already visited, needs a nudge back
+
+export const FUNNEL_LABELS: Record<FunnelType, string> = {
+  full_unaware: 'Full Unaware',
+  problem_aware: 'Problem Aware',
+  solution_aware: 'Solution Aware',
+  product_aware: 'Product Aware',
+  most_aware: 'Most Aware',
+  retargeting: 'Retargeting',
+};
+
+export const FUNNEL_DESCRIPTIONS: Record<FunnelType, string> = {
+  full_unaware: "They don't even know they have a problem. Ads must disrupt and educate. Longest funnel, highest volume.",
+  problem_aware: "They feel the pain but haven't looked for solutions. Agitate the wound, then introduce the category.",
+  solution_aware: "They know solutions exist but don't know YOUR product. Differentiate via mechanism and proof.",
+  product_aware: "They know your product but haven't decided. Overcome objections, stack proof, create urgency.",
+  most_aware: "Ready to buy — just needs the right offer. Direct response, scarcity, bonuses, guarantee.",
+  retargeting: "Already visited or engaged. Reminder-style ads, social proof, limited-time offers.",
+};
+
+export const FUNNEL_COLORS: Record<FunnelType, string> = {
+  full_unaware: 'border-red-500/50 bg-red-500/10 text-red-400',
+  problem_aware: 'border-orange-500/50 bg-orange-500/10 text-orange-400',
+  solution_aware: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400',
+  product_aware: 'border-blue-500/50 bg-blue-500/10 text-blue-400',
+  most_aware: 'border-green-500/50 bg-green-500/10 text-green-400',
+  retargeting: 'border-purple-500/50 bg-purple-500/10 text-purple-400',
+};
 
 export type GateId = 'gate1' | 'gate2' | 'gate3' | 'brand-dna' | 'gate4' | 'gate5' | 'gate6' | 'gate7' | 'gate8' | 'gate9';
 
@@ -198,6 +382,31 @@ export interface BrandDNA {
     metaphor: string | null;
     color_associations: { problem: string; solution: string; brand: string };
     product_image_rules: string[];
+  };
+
+  // Product specs — auto-populated from Shopify data when available.
+  // Every downstream gate reads these for real pricing, features, proof.
+  product_specs?: {
+    price: string;
+    compare_at_price?: string;
+    currency: string;
+    price_position: 'budget' | 'mid' | 'premium';
+    product_format: string;           // pill, cream, app, ebook, device, etc.
+    key_features: string[];
+    key_benefits: string[];
+    guarantee_days?: number;
+    shipping_info?: string;
+    available_variants: Array<{ name: string; price: string; available: boolean }>;
+    product_images: string[];         // URLs to real product images
+  };
+
+  // Proof inventory — real testimonials, data points from reviews/research.
+  // Gates 4-9 pull from here instead of inventing social proof.
+  proof_inventory?: {
+    testimonials: Array<{ text: string; author: string; rating: number; verified: boolean }>;
+    average_rating?: number;
+    total_reviews?: number;
+    data_points: Array<{ stat: string; source: string }>;
   };
 
   sub_avatars: Array<SubAvatar>;

@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Pawen Command Center",
-  description: "Multi-agent AI pipeline for product research and ad creation",
+  description: "Multi-agent AI pipeline for Meta Ads — any product, language, niche",
 };
 
 export default function RootLayout({

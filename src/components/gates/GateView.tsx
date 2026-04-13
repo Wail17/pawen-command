@@ -16,9 +16,14 @@ interface GateViewProps {
   onGenerate: () => void;
   onRegenerate: () => void;
   onApprove: () => void;
+  onLoadDemo?: () => void; // Load demo/mock data for UI preview
   children: React.ReactNode; // Gate-specific content (decision points, etc.)
+  contextBar?: React.ReactNode; // Funnel selector + sub-avatar switcher
   manualInput?: React.ReactNode; // Manual input form
   generationLog?: React.ReactNode; // Expandable generation log
+  hasCongruenceCheck?: boolean; // Whether this gate runs a congruence check
+  brandDNAStatus?: 'missing' | 'unlocked' | 'locked';
+  projectId?: string;
 }
 
 export default function GateView({
@@ -34,8 +39,13 @@ export default function GateView({
   onRegenerate,
   onApprove,
   children,
+  contextBar,
   manualInput,
   generationLog,
+  onLoadDemo,
+  hasCongruenceCheck,
+  brandDNAStatus,
+  projectId,
 }: GateViewProps) {
   const [showLog, setShowLog] = useState(false);
 
@@ -51,6 +61,9 @@ export default function GateView({
         </div>
         <p className="text-text-secondary text-sm">{description}</p>
       </div>
+
+      {/* Context bar — funnel selector + sub-avatar switcher */}
+      {contextBar}
 
       {/* Input Mode Toggle */}
       <div className="flex items-center gap-2 mb-6">
@@ -86,7 +99,7 @@ export default function GateView({
 
       {/* AI Mode: Generate button or streaming */}
       {inputMode === 'ai' && !output && !isGenerating && (
-        <div className="mb-6 flex justify-center">
+        <div className="mb-6 flex justify-center gap-3">
           <button
             onClick={onGenerate}
             className="px-8 py-3 bg-accent-orange text-white font-semibold rounded-xl hover:bg-accent-orange-hover text-sm flex items-center gap-2"
@@ -94,6 +107,15 @@ export default function GateView({
             <span>Generate with AI</span>
             <span className="text-xs opacity-70">(Opus 4.6)</span>
           </button>
+          {onLoadDemo && (
+            <button
+              onClick={onLoadDemo}
+              className="px-6 py-3 bg-bg-card border border-accent-teal/50 text-accent-teal font-semibold rounded-xl hover:bg-accent-teal/10 text-sm flex items-center gap-2"
+            >
+              <span>Demo</span>
+              <span className="text-xs opacity-70">(preview UI)</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -123,7 +145,12 @@ export default function GateView({
       {output && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           <ReviewPanel review={output.reviewResult} />
-          <CongruencePanel congruence={output.congruenceResult} />
+          <CongruencePanel
+            congruence={output.congruenceResult}
+            hasCongruenceCheck={hasCongruenceCheck}
+            brandDNAStatus={brandDNAStatus}
+            projectId={projectId}
+          />
         </div>
       )}
 

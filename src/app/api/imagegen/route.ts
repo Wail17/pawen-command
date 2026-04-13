@@ -4,6 +4,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/session';
 
 const FAL_API_URL = 'https://queue.fal.run';
 
@@ -15,6 +16,9 @@ const FAL_MODELS: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  const session = requireSession(req);
+  if (session instanceof Response) return session;
+
   const apiKey = process.env.FAL_AI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ message: 'FAL_AI_API_KEY not configured' }, { status: 500 });

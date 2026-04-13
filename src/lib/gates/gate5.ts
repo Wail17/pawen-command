@@ -6,6 +6,8 @@
 // ============================================================
 
 import { GateConfigDef } from './types';
+import { EVOLVE_COHERENCE_CHAIN } from './evolveFrameworks';
+import { ZAK_ADVERTORIAL_ADVANCED, ZAK_MECHANISM_PSYCHOLOGY } from './zakFrameworks';
 
 const gate5: GateConfigDef = {
   id: 'gate5',
@@ -20,7 +22,7 @@ const gate5: GateConfigDef = {
       model: 'opus',
       systemPrompt: (project, previousOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
-        const subAvatars = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.sub_avatars ?? '', null, 2).slice(0, 2000) : '';
+        const subAvatars = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.sub_avatars ?? '', null, 2).slice(0, 5000) : '';
 
         return `You are an elite direct response storyteller. You write background stories for ZAK 7-block advertorials — the kind that make readers forget they're reading an ad.
 
@@ -37,7 +39,7 @@ Your job: Write the BACKGROUND STORY block — the opening narrative that hooks 
 
       userMessage: (project, previousOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
-        const voiceProfile = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.voice_profile ?? '', null, 2).slice(0, 1500) : '';
+        const voiceProfile = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.voice_profile ?? '', null, 2).slice(0, 4000) : '';
         const g3 = previousOutputs['gate3'] as Record<string, unknown> | undefined;
 
         return `PRODUCT DESCRIPTION:
@@ -47,7 +49,7 @@ VOICE PROFILE:
 ${voiceProfile || 'Use natural, conversational language appropriate for the target market.'}
 
 GATE 3 STRATEGY (root cause & mechanism):
-${g3 ? JSON.stringify(g3, null, 2).slice(0, 2000) : 'Not available — infer from product.'}
+${g3 ? JSON.stringify(g3, null, 2).slice(0, 4000) : 'Not available — infer from product.'}
 
 ## BACKGROUND STORY BLOCK — ZAK 7 Elements
 
@@ -117,7 +119,7 @@ Your job: Write the ROOT CAUSE + REGRET block — the revelation that shifts the
       userMessage: (project, previousOutputs) => {
         const g3 = previousOutputs['gate3'] as Record<string, unknown> | undefined;
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
-        const altSolutions = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.alternative_solutions ?? '', null, 2).slice(0, 1500) : '';
+        const altSolutions = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.alternative_solutions ?? '', null, 2).slice(0, 4000) : '';
 
         return `PRODUCT DESCRIPTION:
 ${project.productDescription}
@@ -208,7 +210,7 @@ GATE 3 — MECHANISM & ROOT CAUSE:
 ${g3 ? JSON.stringify(g3, null, 2).slice(0, 3000) : 'Not available — infer from product.'}
 
 PRODUCT INTELLIGENCE (Gate 1):
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : 'Not available.'}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : 'Not available.'}
 
 ## MECHANISM EXPLANATION BLOCK
 
@@ -279,7 +281,9 @@ CRITICAL: Write in ENGLISH regardless of the product's target language. Translat
 PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}
 
-Your job: Write the PRODUCT BUILD-UP block using 5 psychological triggers that create maximum desire before the reveal.`,
+Your job: Write the PRODUCT BUILD-UP block using the ZAK 2 narrative structures and 5 psychological triggers that create maximum desire before the reveal.
+
+${ZAK_MECHANISM_PSYCHOLOGY}`,
 
       userMessage: (project, previousOutputs) => {
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
@@ -289,10 +293,10 @@ Your job: Write the PRODUCT BUILD-UP block using 5 psychological triggers that c
 ${project.productDescription}
 
 PRODUCT INTELLIGENCE (Gate 1):
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : 'Not available.'}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : 'Not available.'}
 
 GATE 3 — MECHANISM:
-${g3 ? JSON.stringify(g3, null, 2).slice(0, 1500) : 'Not available.'}
+${g3 ? JSON.stringify(g3, null, 2).slice(0, 4000) : 'Not available.'}
 
 ## PRODUCT BUILD-UP BLOCK — 5 Psychological Triggers
 
@@ -383,10 +387,10 @@ Your job: Write the PRODUCT REVEAL block — build 7 required beliefs before nam
 ${project.productDescription}
 
 PRODUCT INTELLIGENCE (Gate 1):
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : 'Not available.'}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : 'Not available.'}
 
 GATE 3 — MECHANISM & ROOT CAUSE:
-${g3 ? JSON.stringify(g3, null, 2).slice(0, 2000) : 'Not available.'}
+${g3 ? JSON.stringify(g3, null, 2).slice(0, 4000) : 'Not available.'}
 
 ## PRODUCT REVEAL BLOCK — 7 Required Beliefs
 
@@ -454,7 +458,7 @@ RULES:
 
     {
       id: 'close-writer',
-      name: '9-Step Close Writer',
+      name: 'ZAK 10-Part Close Writer',
       model: 'opus',
       systemPrompt: (project) => `You are an elite direct response closer. You write the final section of advertorials — the part that turns readers into buyers. You understand the psychology of commitment, value perception, and risk reversal.
 
@@ -463,7 +467,9 @@ CRITICAL: Write in ENGLISH regardless of the product's target language. Translat
 PRODUCT: ${project.name || 'See description'}
 TARGET MARKET: ${project.targetMarket}
 
-Your job: Write the 9-STEP CLOSE — the complete closing sequence that drives action.`,
+${ZAK_ADVERTORIAL_ADVANCED}
+
+Your job: Write the ZAK 10-PART CLOSE — the complete closing sequence that drives action.`,
 
       userMessage: (project, previousOutputs) => {
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
@@ -473,83 +479,93 @@ Your job: Write the 9-STEP CLOSE — the complete closing sequence that drives a
 ${project.productDescription}
 
 PRODUCT INTELLIGENCE (Gate 1):
-${g1 ? JSON.stringify(g1, null, 2).slice(0, 2000) : 'Not available.'}
+${g1 ? JSON.stringify(g1, null, 2).slice(0, 4000) : 'Not available.'}
 
 GATE 4 — HOOKS & MINI-MOVIES:
-${g4 ? JSON.stringify(g4, null, 2).slice(0, 2000) : 'Not available — write mini-movies from product benefits.'}
+${g4 ? JSON.stringify(g4, null, 2).slice(0, 4000) : 'Not available — write mini-movies from product benefits.'}
 
-## 9-STEP CLOSE
+## ZAK 10-PART CLOSE
 
-Write ALL 9 steps as flowing copy:
+Write ALL 10 parts as flowing copy (follows ZAK Close Structure):
 
-### Step 1: Raw Testimonials (3-5)
-- Real-sounding testimonials with names, locations, specific results
-- Mix of demographics — reader must see someone like THEM
-- Include one "skeptic turned believer" testimonial
-- Format: conversational quotes, not polished marketing
+### Part 1: Recap the Transformation
+- "So here's what you're getting: [mechanism] that [result]"
+- Quick, punchy summary of the mechanism + outcome
+- Callback to the root cause revelation — "Now that you know WHY..."
 
-### Step 2: Future Pacing (using Gate 4 mini-movies)
-- Paint 3 vivid "mini-movie" scenarios of life AFTER the product works
-- "Imagine waking up tomorrow and [specific positive scenario]..."
-- Use all 5 senses — what they SEE, HEAR, FEEL
-- Make the future feel MORE real than the present
-
-### Step 3: Price Justification (Value Framing)
-- "What would it be worth to [solve this problem permanently]?"
-- Compare to cost of NOT solving (money, time, emotional toll)
-- Compare to cost of alternatives (doctors, other products, lost opportunities)
-- Make the actual price feel like a fraction of the value
-
-### Step 4: Scarcity (Time/Quantity-Based)
-- Create authentic urgency — why NOW, not later?
-- "Due to [real reason], we can only [limitation]"
-- Time-based OR quantity-based — pick the more credible one
-- Must feel REAL, not manufactured
-
-### Step 5: Destroy Comparisons (vs Alternatives)
-- Quick comparison table (in prose form) vs 3 alternatives
-- "[Product] vs [Alternative 1]: [specific advantage]"
-- Don't trash competitors — ELEVATE the product
-- Focus on mechanism advantage, not feature list
-
-### Step 6: Price Anchoring
-- "Compared to [expensive alternative], this is..."
-- Stack real costs: "[Alt A] costs $X/month. [Alt B] costs $Y. [Product] is just..."
-- Anchor to high number first, reveal actual price as relief
-- Make the price feel like a "steal," not a "cost"
-
-### Step 7: Value Stack
-- List EVERYTHING they get — product, bonuses, support, access
-- Each item gets its own "value" line
+### Part 2: Stack the Value
+- List EVERYTHING included, assign dollar values to each piece
 - "Total value: $[high number]. Your price today: $[actual price]"
+- Each item gets its own "value" line with justification
 - Make them feel they're getting 5-10x the value
 
-### Step 8: Regret Anticipation
-- "6 months from now, you'll either be [transformed] or still [suffering]"
-- Paint the cost of inaction in vivid detail
-- "The only thing worse than struggling with [problem] is knowing you COULD have fixed it"
-- One powerful paragraph — not a guilt trip, a reality check
+### Part 3: Damaging Admission
+- "I have to be honest: [genuine limitation]"
+- Confess ONE real weakness that builds trust
+- Frame the weakness as evidence of quality: "We don't [shortcut] because..."
+- This is the single most trust-building moment in the close
 
-### Step 9: Risk Reversal (Guarantee Framing)
+### Part 4: Risk Reversal (Guarantee)
 - Present the guarantee as CONFIDENCE, not desperation
-- "We're so confident because [reason] that we offer [specific guarantee]"
-- Remove ALL remaining risk
-- Final CTA — clear, simple, urgent
+- "If [mechanism] doesn't [result] in [time], you pay nothing"
+- Remove ALL remaining purchase risk
+- Be specific about what the guarantee covers
+
+### Part 5: Urgency (only if real)
+- Stock levels, price increase date, seasonal relevance
+- Must be GENUINE — fake urgency = trust destruction
+- If no real urgency exists, skip this part entirely
+- "Due to [real reason], we can only [limitation]"
+
+### Part 6: Social Proof Cascade
+- 3 testimonials in sequence:
+  1. Skeptic → Convert ("I was skeptical until...")
+  2. Specific Result ("In 17 days, I...")
+  3. Emotional Transformation ("My [person] noticed the change...")
+- Real-sounding names, locations, specific details
+
+### Part 7: Objection Crusher
+- Address top 3 objections directly
+- "You might be thinking: [objection]..."
+- Use OCPB cycle: Objection → Claim → Proof → Benefit
+- End each crusher with a specific proof point
+
+### Part 8: Future Pacing (5 Senses)
+- "Imagine 30 days from now: [vivid scene of transformed life]"
+- Use all 5 senses: what they SEE, HEAR, FEEL, SMELL, TASTE
+- Include social reactions: "Your [person] will notice..."
+- Make the future feel MORE real than the present
+
+### Part 9: Final CTA
+- Clear, specific action: "Click the button below to [start your transformation]"
+- Repeat the key value proposition in one line
+- No ambiguity about what happens next
+
+### Part 10: Post-Script (P.S.)
+- One MORE reason to buy — often the strongest proof point
+- Or a restatement of the guarantee
+- Or a scarcity reminder
+- This is the SECOND most-read part of any page (after the headline)
 
 ## OUTPUT FORMAT
 
 Respond in valid JSON:
 {
-  "close_block": "THE FULL TEXT — 800-1200 words. All 9 steps flowing as continuous persuasive copy.",
-  "nine_steps": [
+  "close_block": "THE FULL TEXT — 900-1400 words. All 10 parts flowing as continuous persuasive copy.",
+  "ten_parts": [
     {
-      "step": 1,
-      "name": "Raw Testimonials",
+      "part": 1,
+      "name": "Recap the Transformation",
       "word_count": 0,
-      "key_line": "the most persuasive line in this step",
-      "psychological_lever": "what this step does to the reader's decision process"
+      "key_line": "the most persuasive line in this part",
+      "psychological_lever": "what this part does to the reader's decision process"
     }
   ],
+  "damaging_admission": {
+    "weakness_stated": "the genuine limitation admitted",
+    "trust_impact": "how this builds credibility",
+    "transition_to_strength": "how it connects to a positive"
+  },
   "testimonials": [
     { "name": "", "location": "", "quote": "", "result": "" }
   ],
@@ -607,7 +623,7 @@ WEAVING RULES:
     }
 
     const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
-    const voiceProfile = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.voice_profile ?? '', null, 2).slice(0, 1000) : '';
+    const voiceProfile = g2 ? JSON.stringify((g2 as Record<string, unknown>)?.voice_profile ?? '', null, 2).slice(0, 4000) : '';
 
     return `Here are your 6 specialist blocks. Weave them into a single seamless advertorial.
 
@@ -669,17 +685,19 @@ WEAVING CHECKLIST (verify before submitting):
 
   reviewerPrompt: `You are an elite advertorial reviewer for a $100M/year direct response brand. You have reviewed 1000+ advertorials and know exactly what separates a 6-figure winner from a flop. Score with brutal honesty.
 
+${EVOLVE_COHERENCE_CHAIN}
+
 DIMENSIONS (each /10, total /100, threshold >=78%):
-1. Opening Hook: Does the first sentence stop the scroll? First paragraph create irresistible curiosity? Would you keep reading?
-2. Story Authenticity: Does the protagonist feel REAL? Specific details? Emotional truth? Would a reader see themselves?
-3. Root Cause Revelation: Does it feel like a genuine discovery? Does it shift beliefs? Does the reader think "THAT'S why nothing worked"?
-4. Mechanism Clarity: Is it explained at 6th-grade level? Do analogies land? Does the reader understand AND believe?
-5. Build-Up Tension: Does desire escalate? Are all 5 psychological triggers present? Is the reader desperate to know the product?
-6. Reveal Impact: Are all 7 beliefs built? Does the product name land with impact? Does it feel inevitable?
-7. Close Persuasion: All 9 steps present? Testimonials feel real? Price justified? Risk reversed? CTA clear?
-8. Narrative Flow: Do blocks flow seamlessly? Are transitions invisible? Does it read as ONE story?
-9. Emotional Arc: Does the piece follow curiosity → pain → revelation → hope → desire → action? Is each emotion EARNED?
-10. Voice Consistency: Is the voice consistent throughout? Does it match the target avatar? Does it sound human, not corporate?
+1. Opening Hook: Does the first sentence stop the scroll? First paragraph create irresistible curiosity? Would you keep reading? Meets 3 Hook Requirements (call audience + promise benefit + create curiosity)?
+2. Story Authenticity: Does the protagonist feel REAL? Specific details? Emotional truth? Would a reader see themselves? Uses EXACT sub-avatar language from Gate 2?
+3. Root Cause Revelation: Does it feel like a genuine discovery? Does it shift beliefs? Does the reader think "THAT'S why nothing worked"? Uses EXACT root cause from Gate 3?
+4. Mechanism Clarity: Is it explained at 6th-grade level? Do analogies land? Does the reader understand AND believe? Uses EXACT mechanism name and 3 steps from Gate 3?
+5. Build-Up Tension: Does desire escalate? Are all 5 psychological triggers present? Is the reader desperate to know the product? Is the ZAK narrative structure (Frustration+Expert OR Discovery+Recommendation) clearly chosen and executed?
+6. Reveal Impact: Are all 7 beliefs built? Does the product name land with impact? Does it feel inevitable? Damaging admission present and genuine?
+7. Close Persuasion: All ZAK 10 parts present? Damaging admission in close? Social proof cascade with 3 distinct testimonial types (skeptic→convert, specific result, emotional transformation)? Objection crusher uses OCPB cycle? Future pacing uses 5 senses? P.S. included with strongest proof point?
+8. Narrative Flow: Do blocks flow seamlessly? Are transitions invisible? Does it read as ONE story? Awareness levels NOT skipped?
+9. Emotional Arc: Does the piece follow curiosity → pain → revelation → hope → desire → action? Is each emotion EARNED? Emotional intensity matches Gate 2 (no "concern" if Gate 2 found "terror")?
+10. Coherence Lock: Mechanism name, root cause, belief error, sub-avatar name ALL exact from upstream gates? No generic substitutions? No vanishing gradient?
 
 Respond in valid JSON with score, maxScore (100), dimensions array, feedback, and passed boolean.`,
 

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Project, BrandDNA } from '@/lib/types';
 import { getProject, saveProject, getGateOutput } from '@/lib/store/db';
+import { extractJSON } from '@/lib/util/extractJson';
 import Pipeline from '@/components/ui/Pipeline';
 
 export default function BrandDNAPage() {
@@ -32,16 +33,35 @@ export default function BrandDNAPage() {
     if (!project) return;
     setCompiling(true);
 
-    // Get all gate outputs for compilation
-    const g1 = await getGateOutput(projectId, 'gate1');
+    // Get downstream gate outputs for compilation
     const g2 = await getGateOutput(projectId, 'gate2');
     const g3 = await getGateOutput(projectId, 'gate3');
 
-    if (!g1 || !g2 || !g3) {
-      alert('Gates 1, 2, and 3 must be completed before compiling Brand DNA.');
+    // Gate 1 (Avatar Excavation) lives BOTH on the project (avatarRunResult)
+    // and as a GateOutput. Use the project copy as the canonical truth so
+    // we get the typed structure with sub_avatars + verbatims + angles.
+    const avatarRun = project.avatarRunResult;
+
+    // Reverse-engineered competitor funnel carries its own mechanism + copy arsenal.
+    // When present, it compensates for G2/G3 so we relax the blocker.
+    const reverse = project.competitorIntel?.reverseEngineered;
+
+    if (!avatarRun) {
+      alert('Gate 1 (Avatar Excavation) must be completed before compiling Brand DNA.');
       setCompiling(false);
       return;
     }
+    if (!reverse && (!g2 || !g3)) {
+      alert('Gate 2 and Gate 3 must be completed before compiling Brand DNA — or start from a reverse-engineered competitor funnel.');
+      setCompiling(false);
+      return;
+    }
+
+    // Pull the selected sub-avatar's deep enrichments (deep_dives, awareness_variants,
+    // swipe_vocabulary) so the Brand DNA inherits every drop of context from Gate 1.
+    const selectedSubAvatar =
+      avatarRun.sub_avatars.find(sa => sa.id === project.selectedSubAvatarId) ??
+      avatarRun.sub_avatars[0];
 
     try {
       const response = await fetch('/api/generate', {
@@ -121,29 +141,100 @@ EXACT SCHEMA (follow every field name and type precisely):
 RULES:
 - mechanism_name MUST be the EXACT brandable name from Gate 3 solution_mechanism.name
 - mechanism_3_steps MUST be the EXACT 3 steps from Gate 3 — do NOT rephrase
-- pain_quotes and desire_quotes MUST be REAL verbatim quotes from Gate 2 — minimum 5 each
+- pain_quotes MUST be REAL verbatim quotes pulled DIRECTLY from Gate 1 sub_avatars[].verbatim_quotes — keep the exact wording, the source URL, and the sub_avatar id. Minimum 5.
+- desire_quotes MUST be REAL verbatim quotes from Gate 2 OR derived from Gate 1 emotional_triggers — minimum 5
 - objection_quotes minimum 3
 - always_use and never_use minimum 5 words each
-- sub_avatars MUST match Gate 2 sub-avatars — maintain exact names and ids
+- sub_avatars: use the EXACT list from Gate 1 (Avatar Excavation) — keep their ids, names, nicknames, urgency_score, launch_order, tam_estimate (→tam), and convert their angles.positioning into primary_angle and angles.hooks into secondary_angles. DO NOT invent new sub-avatars.
 - All fields MUST be populated — no empty strings, no empty arrays
-- color_associations: use hex codes that emotionally match the problem/solution space`,
+- color_associations: use hex codes that emotionally match the problem/solution space
+- IF a reverse-engineered competitor funnel is present, it is AUTHORITATIVE context: its mechanism_name, three_steps, root_cause, belief_error and copy_arsenal hooks/headlines are proven-in-market. Use them as the anchor for locked_terms and preserve their wording verbatim. Sub-avatar angles MUST stay consistent with the competitor's positioning.
+- IF deep_dives[] or awareness_variants[] exist on the selected sub-avatar, harvest them: deep-dive hidden_fears → additional pain_quotes, buying_objections → objection_quotes, awareness-variant headlines → phrases_to_use, awareness-variant language notes → voice_profile.vocabulary.
+- NEVER drop context that exists upstream. If a verbatim, mechanism step, fear, or objection exists in the inputs, it MUST survive into the Brand DNA in SOME field.`,
           userMessage: `Compile Brand DNA from these gate outputs:
 
-=== GATE 1: PRODUCT INTELLIGENCE ===
-${JSON.stringify(g1.data, null, 2)}
+=== GATE 1: AVATAR EXCAVATION (canonical sub-avatars + verbatims) ===
+Core avatar input:
+${JSON.stringify(avatarRun.core_avatar, null, 2)}
 
-=== GATE 2: AVATAR DEEP DIVE ===
+Sub-avatars (use these EXACT ids and nicknames in brand_dna.sub_avatars):
+${JSON.stringify(avatarRun.sub_avatars.map(sa => ({
+  id: sa.id,
+  name: sa.name,
+  nickname: sa.nickname,
+  description: sa.description,
+  urgency_score: sa.urgency_score,
+  launch_order: sa.launch_order,
+  tam: sa.tam_estimate,
+  trigger_moment: sa.emotional_triggers?.[0] ?? '',
+  primary_angle: {
+    name: sa.angles?.positioning?.framework ?? '',
+    description: sa.angles?.positioning?.description ?? '',
+  },
+  hooks: sa.angles?.hooks ?? [],
+  story_angle: sa.angles?.story_angle ?? null,
+  verbatim_quotes: sa.verbatim_quotes ?? [],
+  emotional_triggers: sa.emotional_triggers ?? [],
+})), null, 2)}
+
+Final recommendation: ${JSON.stringify(avatarRun.final_recommendation, null, 2)}
+
+=== SELECTED SUB-AVATAR DEEP ENRICHMENTS (Phase F/E/P — DO NOT DROP) ===
+Selected sub-avatar id: ${selectedSubAvatar?.id ?? 'N/A'}
+Selected funnel position: ${project.selectedFunnel ?? 'N/A'}
+Deep dives (${selectedSubAvatar?.deep_dives?.length ?? 0}):
+${JSON.stringify(selectedSubAvatar?.deep_dives ?? [], null, 2)}
+Awareness variants (${selectedSubAvatar?.awareness_variants?.length ?? 0}):
+${JSON.stringify(selectedSubAvatar?.awareness_variants ?? [], null, 2)}
+
+${reverse ? `=== COMPETITOR INTEL — REVERSE-ENGINEERED FUNNEL (AUTHORITATIVE) ===
+This funnel is proven in market. Its mechanism, copy arsenal and insights MUST anchor the Brand DNA.
+Competitor brand: ${reverse.competitor_brand}
+Competitor URL: ${reverse.competitor_url}
+
+Mechanism (use as locked_terms.mechanism_name + mechanism_3_steps):
+${JSON.stringify(reverse.mechanism, null, 2)}
+
+Avatar profile (merge with Gate 1 sub-avatars):
+${JSON.stringify(reverse.sub_avatar, null, 2)}
+
+Copy arsenal (harvest hooks → phrases_to_use, emotional_triggers → customer_language, proof_points → key_proof_points, guarantee_angle → guarantee_wording):
+${JSON.stringify(reverse.copy_arsenal, null, 2)}
+
+Creative strategy (seed visual_identity):
+${JSON.stringify(reverse.creative_strategy, null, 2)}
+
+Funnel structure:
+${JSON.stringify(reverse.funnel_structure, null, 2)}
+
+Strategic insights (angles_to_steal → primary_angle seeds, angles_to_avoid → phrases_to_avoid):
+${JSON.stringify(reverse.insights, null, 2)}
+` : ''}
+${g2 ? `=== GATE 2: AVATAR DEEP DIVE ===
 ${JSON.stringify(g2.data, null, 2)}
-
-=== GATE 3: ROOT CAUSE & SOLUTION MECHANISM ===
+` : '=== GATE 2: NOT RUN (using reverse-engineered funnel instead) ===\n'}
+${g3 ? `=== GATE 3: ROOT CAUSE & SOLUTION MECHANISM ===
 ${JSON.stringify(g3.data, null, 2)}
-
+` : '=== GATE 3: NOT RUN (mechanism comes from reverse-engineered funnel above) ===\n'}
 === PROJECT INFO ===
 Product Name: ${project.name}
 Target Market: ${project.targetMarket}
-Target Language: ${project.targetLanguage}`,
+Target Language: ${project.targetLanguage}
+${project.shopifyData ? `
+=== SHOPIFY PRODUCT DATA (USE REAL DATA) ===
+Product: ${project.shopifyData.productTitle}
+Price: ${project.shopifyData.currency === 'EUR' ? '€' : '$'}${project.shopifyData.price ?? 'N/A'}${project.shopifyData.compareAtPrice ? ` (was ${project.shopifyData.currency === 'EUR' ? '€' : '$'}${project.shopifyData.compareAtPrice})` : ''}
+Vendor: ${project.shopifyData.vendor || 'N/A'}
+Type: ${project.shopifyData.productType || 'N/A'}
+Tags: ${project.shopifyData.tags.join(', ')}
+Variants: ${project.shopifyData.variants.map(v => v.title + ' ($' + v.price + ')').join(', ')}
+Reviews: ${project.shopifyData.reviewStats?.totalReviews ?? 0} reviews, avg ${project.shopifyData.reviewStats?.averageRating ?? '?'}/5
+Top Reviews:
+${project.shopifyData.reviews.filter(r => r.rating >= 4).slice(0, 5).map(r => `★${r.rating} "${r.body.slice(0, 150)}" — ${r.author}`).join('\n')}
+
+IMPORTANT: Use REAL product name, REAL price, and REAL review quotes in the Brand DNA. The product_descriptor should match the actual product. proof_points should reference real review data.` : ''}`,
           temperature: 0.3,
-          maxTokens: 16384,
+          maxTokens: 32000,
           cacheControl: true,
         }),
       });
@@ -156,35 +247,54 @@ Target Language: ${project.targetLanguage}`,
       }
 
       const result = await response.json();
-      let compiled: BrandDNA;
 
-      try {
-        let jsonStr = result.content;
-        // Try to extract JSON from markdown fences first
-        const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-        if (fenceMatch) {
-          jsonStr = fenceMatch[1];
-        } else {
-          // Find the outermost JSON object by matching balanced braces
-          const startIdx = jsonStr.indexOf('{');
-          if (startIdx !== -1) {
-            let depth = 0;
-            let endIdx = startIdx;
-            for (let ci = startIdx; ci < jsonStr.length; ci++) {
-              if (jsonStr[ci] === '{') depth++;
-              else if (jsonStr[ci] === '}') { depth--; if (depth === 0) { endIdx = ci; break; } }
-            }
-            jsonStr = jsonStr.slice(startIdx, endIdx + 1);
-          }
-        }
-        compiled = JSON.parse(jsonStr);
-        compiled.locked = false;
-        compiled.version = '1.0';
-      } catch (parseErr) {
-        console.error('Brand DNA parse error:', parseErr, 'Raw content:', result.content?.slice(0, 500));
-        alert('Failed to parse Brand DNA JSON. Check console for details. Try re-compiling.');
+      // Cascading parse: strict → balanced → jsonrepair (handles truncated output)
+      const parsed = extractJSON<BrandDNA>(result.content ?? '');
+      if (!parsed) {
+        console.error('Brand DNA parse error. Raw content (head):', (result.content ?? '').slice(0, 800));
+        console.error('Brand DNA raw content (tail):', (result.content ?? '').slice(-500));
+        alert('Failed to parse Brand DNA JSON even with repair. Check console for details. Try re-compiling.');
         setCompiling(false);
         return;
+      }
+      const compiled: BrandDNA = { ...parsed, locked: false, version: '1.0' };
+
+      // Auto-populate product_specs + proof_inventory from Shopify data
+      if (project.shopifyData) {
+        const sd = project.shopifyData;
+        compiled.product_specs = {
+          price: sd.price ?? '0',
+          compare_at_price: sd.compareAtPrice ?? undefined,
+          currency: sd.currency ?? 'USD',
+          price_position: sd.pricePosition ?? 'mid',
+          product_format: sd.productFormat ?? sd.productType ?? '',
+          key_features: sd.tags.slice(0, 10),
+          key_benefits: [],  // will be enriched by the LLM in the compiled output
+          guarantee_days: undefined,
+          shipping_info: undefined,
+          available_variants: sd.variants.map(v => ({
+            name: v.title,
+            price: v.price,
+            available: v.available,
+          })),
+          product_images: sd.images.map(img => img.src),
+        };
+        if (sd.reviews.length > 0) {
+          compiled.proof_inventory = {
+            testimonials: sd.reviews
+              .filter(r => r.rating >= 4 && r.body.length > 20)
+              .slice(0, 15)
+              .map(r => ({
+                text: r.body.slice(0, 300),
+                author: r.author,
+                rating: r.rating,
+                verified: true,
+              })),
+            average_rating: sd.reviewStats?.averageRating,
+            total_reviews: sd.reviewStats?.totalReviews,
+            data_points: [],
+          };
+        }
       }
 
       setDna(compiled);

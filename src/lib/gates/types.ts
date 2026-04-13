@@ -47,12 +47,14 @@ export interface GateConfigDef {
   generatorPrompt: (
     project: Project,
     subAgentOutputs?: Record<string, string>,
+    previousOutputs?: Record<string, unknown>,
   ) => string;
   userMessage: (
     project: Project,
     previousOutputs: Record<string, unknown>,
     subAgentOutputs?: Record<string, string>,
   ) => string;
+  generatorMaxTokens?: number; // override lead agent max output tokens (default: model config)
 
   // --- Review ---
   reviewerPrompt: string;

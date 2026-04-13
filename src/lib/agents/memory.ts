@@ -9,21 +9,7 @@
 import { v4 as uuid } from 'uuid';
 import { AgentMemoryEntry, AgentId } from '../kb/types';
 import { saveAgentMemory, getAgentMemories } from '../store/db';
-
-// Balanced-brace JSON extraction
-function extractJSON(text: string): Record<string, unknown> | null {
-  let json = text;
-  const fence = json.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (fence) json = fence[1];
-  const start = json.indexOf('{');
-  if (start === -1) return null;
-  let depth = 0, end = start;
-  for (let i = start; i < json.length; i++) {
-    if (json[i] === '{') depth++;
-    else if (json[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
-  }
-  try { return JSON.parse(json.slice(start, end + 1)); } catch { return null; }
-}
+import { extractJSON } from '../util/extractJson';
 
 // === CHANNEL 1: Post-approval learnings ===
 export async function extractLearnings(params: {

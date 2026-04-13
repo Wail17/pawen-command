@@ -8,10 +8,13 @@ import { GateOutput, GateId, ReviewResult, CongruenceResult, BrandDNA, Generatio
 import { GateConfigDef } from '../gates/types';
 import { getModelForRole } from '../ai/providers';
 import { saveGateOutput, getKnowledgeForGate } from '../store/db';
+import { extractJSON as extractJSONShared } from '../util/extractJson';
 import { runSubAgents } from './runSubAgents';
 import { AGENT_PERSONAS, getPersonaForGate, buildPersonaPrompt, buildKnowledgePrompt, buildMemoryPrompt, buildTrainingPrompt } from './personas';
 import { getRelevantMemories, learnFromErrors } from './memory';
 import { getTrainingChunksForGate } from '../store/db';
+import { buildLearningInjection } from '../learning/inject';
+import { captureFromScore } from '../learning/capture';
 
 export interface RunGateParams {
   gateId: GateId;
@@ -111,25 +114,11 @@ async function callAPI(
   return response.json();
 }
 
-// Extract JSON from text — balanced brace matching
+// Extract JSON from text — uses the shared 6-strategy cascade (with jsonrepair
+// fallback for truncated output). Falls back to {rawContent: text} when ALL
+// strategies fail, preserving the legacy contract callers in this file rely on.
 function extractJSON(text: string): Record<string, unknown> {
-  // Strategy 1: ```json fences
-  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1]); } catch { /* fall through */ }
-  }
-  // Strategy 2: balanced braces
-  const startIdx = text.indexOf('{');
-  if (startIdx !== -1) {
-    let depth = 0;
-    let endIdx = startIdx;
-    for (let ci = startIdx; ci < text.length; ci++) {
-      if (text[ci] === '{') depth++;
-      else if (text[ci] === '}') { depth--; if (depth === 0) { endIdx = ci; break; } }
-    }
-    try { return JSON.parse(text.slice(startIdx, endIdx + 1)); } catch { /* fall through */ }
-  }
-  return { rawContent: text };
+  return extractJSONShared<Record<string, unknown>>(text) ?? { rawContent: text };
 }
 
 export async function runGate(params: RunGateParams): Promise<RunGateResult> {
@@ -182,14 +171,138 @@ RULES:
 `;
   }
 
-  // Build previous outputs context
+  // Build funnel + sub-avatar context injection
+  // This tells every downstream agent exactly which awareness funnel and
+  // which sub-avatar they're building for, so all copy, hooks, and angles
+  // stay laser-focused on the chosen strategic lane.
+  let funnelContext = '';
+  if (project.selectedFunnel || project.selectedSubAvatarId) {
+    const parts: string[] = ['=== STRATEGIC CONTEXT ==='];
+    if (project.selectedFunnel) {
+      const funnelDescriptions: Record<string, string> = {
+        full_unaware: "Prospect doesn't know they have a problem. Disrupt, educate, create the 'aha' moment. Long-form, story-driven, identity hooks.",
+        problem_aware: "Prospect feels the pain but hasn't searched for solutions. Agitate the wound, name their experience, then introduce the solution category.",
+        solution_aware: "Prospect knows solutions exist but doesn't know YOUR product. Differentiate via unique mechanism, proof, and positioning. Comparison-friendly.",
+        product_aware: "Prospect knows your product but hasn't decided. Overcome specific objections, stack testimonials, add urgency and guarantee.",
+        most_aware: "Prospect is ready to buy. Direct response: price, offer, scarcity, bonuses, guarantee. No education needed.",
+        retargeting: "Prospect already engaged (visited site, watched video, added to cart). Reminder ads, social proof, limited-time incentive, abandoned cart recovery.",
+      };
+      parts.push(`FUNNEL: ${project.selectedFunnel.toUpperCase().replace(/_/g, ' ')}`);
+      parts.push(`FUNNEL STRATEGY: ${funnelDescriptions[project.selectedFunnel] ?? ''}`);
+      parts.push('ALL copy, hooks, headlines, and angles MUST be calibrated to this awareness level. Do NOT write copy for a different awareness stage.');
+    }
+    if (project.selectedSubAvatarId && project.avatarRunResult) {
+      const sa = project.avatarRunResult.sub_avatars.find(
+        (s) => s.id === project.selectedSubAvatarId,
+      );
+      if (sa) {
+        parts.push('');
+        parts.push(`FOCUSED SUB-AVATAR: ${sa.name} ("${sa.nickname}")`);
+        parts.push(`DESCRIPTION: ${sa.description}`);
+        parts.push(`DOMINANT CATEGORY: ${sa.dominant_category}`);
+        parts.push(`EMOTIONAL TRIGGERS: ${(sa.emotional_triggers ?? []).join(', ')}`);
+        parts.push(`PAST ATTEMPTS/FAILURES: ${(sa.past_attempts_failures ?? []).join('; ')}`);
+        const topQuotes = (sa.verbatim_quotes ?? []).slice(0, 5).map((v) => `"${v.quote}"`);
+        if (topQuotes.length > 0) {
+          parts.push(`KEY VERBATIMS: ${topQuotes.join(' | ')}`);
+        }
+      }
+    }
+    parts.push('=== END STRATEGIC CONTEXT ===\n');
+    funnelContext = parts.join('\n');
+  }
+
+  // Build product intelligence context from Shopify data
+  // Every agent in the pipeline gets real product info: name, price,
+  // features, variants, images, reviews — so copy is never generic.
+  let productContext = '';
+  if (project.shopifyData) {
+    const sd = project.shopifyData;
+    const parts: string[] = ['=== PRODUCT INTELLIGENCE (from Shopify) ==='];
+    parts.push(`PRODUCT: ${sd.productTitle}`);
+    if (sd.productDescription) {
+      parts.push(`DESCRIPTION: ${sd.productDescription.slice(0, 500)}`);
+    }
+    if (sd.price) {
+      const currSymbol = sd.currency === 'EUR' ? '€' : sd.currency === 'GBP' ? '£' : '$';
+      parts.push(`PRICE: ${currSymbol}${sd.price}${sd.compareAtPrice ? ` (was ${currSymbol}${sd.compareAtPrice})` : ''}`);
+      if (sd.pricePosition) parts.push(`POSITIONING: ${sd.pricePosition.toUpperCase()} tier`);
+    }
+    if (sd.vendor) parts.push(`VENDOR/BRAND: ${sd.vendor}`);
+    if (sd.productType) parts.push(`CATEGORY: ${sd.productType}`);
+    if (sd.productFormat) parts.push(`FORMAT: ${sd.productFormat}`);
+    if (sd.tags.length > 0) parts.push(`TAGS: ${sd.tags.join(', ')}`);
+
+    if (sd.variants.length > 1) {
+      parts.push(`VARIANTS (${sd.variants.length}):`);
+      for (const v of sd.variants.slice(0, 8)) {
+        const avail = v.available ? '' : ' [OUT OF STOCK]';
+        parts.push(`  - ${v.title}: ${sd.currency === 'EUR' ? '€' : '$'}${v.price}${avail}`);
+      }
+    }
+
+    if (sd.images.length > 0) {
+      parts.push(`PRODUCT IMAGES: ${sd.images.length} available`);
+      for (const img of sd.images.slice(0, 4)) {
+        parts.push(`  - ${img.src}${img.alt ? ` (${img.alt})` : ''}`);
+      }
+    }
+
+    if (sd.reviewStats) {
+      parts.push(`REVIEWS: ${sd.reviewStats.totalReviews} reviews, avg ${sd.reviewStats.averageRating}/5`);
+    }
+    if (sd.reviews.length > 0) {
+      parts.push('TOP CUSTOMER REVIEWS (real, verified — use as proof):');
+      // Pick a mix of 5-star and critical reviews (most useful for copy)
+      const fiveStars = sd.reviews.filter(r => r.rating >= 4).slice(0, 5);
+      const critical = sd.reviews.filter(r => r.rating <= 3 && r.body.length > 20).slice(0, 3);
+      for (const r of [...fiveStars, ...critical]) {
+        const stars = r.rating ? '★'.repeat(r.rating) : '';
+        parts.push(`  ${stars} "${r.body.slice(0, 200)}" — ${r.author}`);
+      }
+    }
+
+    parts.push('');
+    parts.push('RULES:');
+    parts.push('- Use the REAL product name, REAL price, and REAL reviews in all copy.');
+    parts.push('- Never invent features, claims, or testimonials that are not in the product data.');
+    parts.push('- If making price comparisons, reference the compare-at price or competitor data.');
+    parts.push('- Product images can be referenced in creative briefs and ad concepts.');
+    parts.push('=== END PRODUCT INTELLIGENCE ===\n');
+    productContext = parts.join('\n');
+  }
+
+  // Build previous outputs context — structured summary instead of raw JSON dump
+  // to avoid token overflow on late gates (gate 9 would dump 100k+ chars of raw JSON)
   let previousContext = '';
   if (previousGateOutputs && Object.keys(previousGateOutputs).length > 0) {
-    previousContext = `=== PREVIOUS GATE OUTPUTS (for context) ===
-${JSON.stringify(previousGateOutputs, null, 2)}
-
-=== CURRENT GATE INPUT ===
-`;
+    const summaryParts: string[] = ['=== PREVIOUS GATE OUTPUTS (structured summary) ==='];
+    for (const [gateKey, output] of Object.entries(previousGateOutputs)) {
+      if (!output) continue;
+      const raw = JSON.stringify(output, null, 2);
+      // For small outputs, include in full; for large, truncate intelligently
+      if (raw.length <= 6000) {
+        summaryParts.push(`\n--- ${gateKey.toUpperCase()} ---\n${raw}`);
+      } else {
+        // Extract key fields rather than dumping everything
+        const obj = output as Record<string, unknown>;
+        const keyFields: string[] = [];
+        for (const [k, v] of Object.entries(obj)) {
+          if (v === null || v === undefined) continue;
+          const valStr = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+          // Keep important fields fuller, truncate the rest
+          const isImportant = ['mechanism', 'root_cause', 'hooks', 'headlines', 'angles',
+            'sub_avatars', 'voice_profile', 'customer_language', 'concepts'].some(
+            term => k.toLowerCase().includes(term)
+          );
+          const limit = isImportant ? 3000 : 1500;
+          keyFields.push(`${k}: ${valStr.slice(0, limit)}${valStr.length > limit ? '...[truncated]' : ''}`);
+        }
+        summaryParts.push(`\n--- ${gateKey.toUpperCase()} ---\n${keyFields.join('\n')}`);
+      }
+    }
+    summaryParts.push('\n=== CURRENT GATE INPUT ===\n');
+    previousContext = summaryParts.join('\n');
   }
 
   // Build persona + KB + training + memory enrichment for lead agent
@@ -213,6 +326,17 @@ ${JSON.stringify(previousGateOutputs, null, 2)}
     personaPrefix += buildMemoryPrompt(
       leadMemories.map(m => ({ title: m.title, content: m.content, confidence: m.confidence, type: m.type }))
     ) + '\n\n';
+  }
+
+  // Adaptive Learning: inject gold examples + user preferences + niche intel + performance
+  const learningBlock = await buildLearningInjection({
+    gateId,
+    niche: project.niche || '',
+    funnel: project.selectedFunnel || 'any',
+    adPerformance: project.adPerformance,
+  });
+  if (learningBlock) {
+    personaPrefix += learningBlock + '\n\n';
   }
 
   try {
@@ -275,6 +399,10 @@ ${JSON.stringify(previousGateOutputs, null, 2)}
           managerMemories.map(m => ({ title: m.title, content: m.content, confidence: m.confidence, type: m.type }))
         ) + '\n\n';
       }
+
+      if (learningBlock) managerSystemPrompt += learningBlock + '\n\n';
+      if (funnelContext) managerSystemPrompt += funnelContext + '\n';
+      if (productContext) managerSystemPrompt += productContext + '\n';
 
       managerSystemPrompt += `=== YOUR ROLE: MANAGER REVIEW ===
 You are reviewing your team's work before it gets compiled into the final deliverable.
@@ -427,8 +555,25 @@ ${managerParsedFull.reviews.map(r =>
 === USE THIS ASSESSMENT TO GUIDE YOUR COMPILATION ===\n`;
     }
 
-    const systemPrompt = personaPrefix + brandDNAPrefix + managerGuidance + config.generatorPrompt(project, subAgentOutputs);
-    const userMsg = previousContext + config.userMessage(project, previousGateOutputs, subAgentOutputs);
+    const systemPrompt = personaPrefix + brandDNAPrefix + funnelContext + productContext + managerGuidance + config.generatorPrompt(project, subAgentOutputs, previousGateOutputs);
+
+    // Build compact product reminder for END of user message (recency bias fix).
+    // LLMs pay most attention to start + end of prompts. The full productContext
+    // is at the start (system prompt), this compact version pins critical facts
+    // at the very end so they're fresh when the LLM generates output.
+    let productReminder = '';
+    if (project.shopifyData) {
+      const sd = project.shopifyData;
+      const sym = sd.currency === 'EUR' ? '€' : sd.currency === 'GBP' ? '£' : '$';
+      productReminder = `\n\n=== PRODUCT FACTS (USE THESE EXACT VALUES) ===
+PRODUCT NAME: ${sd.productTitle}
+PRICE: ${sym}${sd.price ?? '?'}${sd.compareAtPrice ? ` (crossed-out: ${sym}${sd.compareAtPrice})` : ''}
+FORMAT: ${sd.productFormat ?? sd.productType ?? 'N/A'}
+BRAND: ${sd.vendor || 'N/A'}${sd.reviewStats ? `\nREVIEW PROOF: ${sd.reviewStats.totalReviews} reviews, ${sd.reviewStats.averageRating}/5 avg` : ''}${sd.images.length > 0 ? `\nPRODUCT IMAGE: ${sd.images[0].src}` : ''}
+=== NEVER INVENT FEATURES, PRICES, OR TESTIMONIALS NOT IN THE DATA ===`;
+    }
+
+    const userMsg = previousContext + config.userMessage(project, previousGateOutputs, subAgentOutputs) + productReminder;
 
     let genResult = await callAPI(
       '/api/generate',
@@ -437,7 +582,7 @@ ${managerParsedFull.reviews.map(r =>
         systemPrompt,
         userMessage: userMsg,
         temperature: 0.7,
-        maxTokens: generatorModel.maxTokens,
+        maxTokens: config.generatorMaxTokens ?? generatorModel.maxTokens,
         cacheControl: true,
       },
       onStreamChunk,
@@ -476,6 +621,10 @@ ${managerParsedFull.reviews.map(r =>
       ) + '\n\n';
     }
 
+    if (learningBlock) directorPrompt += learningBlock + '\n\n';
+    if (funnelContext) directorPrompt += funnelContext + '\n';
+    if (productContext) directorPrompt += productContext + '\n';
+
     directorPrompt += `=== YOUR ROLE: DIRECTOR REVIEW ===
 You are Léa, the Director of Pawen Agency. You are the FINAL quality gate.
 The ${leadPersona.emoji} ${leadPersona.name} (${leadPersona.role}) and their team produced this output.
@@ -486,6 +635,7 @@ YOUR JOB:
 3. Apply YOUR standards — you are demanding and detail-oriented
 4. Score each dimension honestly
 5. If it's not good enough, say exactly what needs to change
+${project.shopifyData ? `6. PRODUCT FACT-CHECK: Verify the output uses the REAL product name ("${project.shopifyData.productTitle}"), REAL price (${project.shopifyData.currency === 'EUR' ? '€' : '$'}${project.shopifyData.price}), and does NOT invent features, testimonials, or claims not in the product data. Flag any fabricated product details as CRITICAL issues.` : ''}
 
 ${config.reviewerPrompt}
 
@@ -644,6 +794,17 @@ Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
       }).catch(err => console.error('Léa learning failed:', err));
     }
 
+    // === AUTO-CAPTURE: High-scoring outputs become gold examples ===
+    if (reviewResult && reviewResult.percentage >= 85) {
+      const parsedForGold = extractJSON(bestOutput);
+      captureFromScore({
+        project,
+        gateId,
+        data: parsedForGold,
+        score: reviewResult.percentage,
+      }).catch(() => {}); // fire-and-forget, never block the pipeline
+    }
+
     // Save checkpoint
     const intermediateOutput: GateOutput = {
       gateId,
@@ -742,7 +903,15 @@ ${JSON.stringify(previousGateOutputs, null, 2)}
 
 === CONTENT TO CHECK (Gate: ${gateId}) ===
 ${currentContent}
-
+${brandDNA.product_specs ? `
+=== PRODUCT FACT-CHECK ===
+Verify the content uses these EXACT product facts:
+- Product name: "${brandDNA.product_name}"
+- Price: ${brandDNA.product_specs.currency === 'EUR' ? '€' : '$'}${brandDNA.product_specs.price}${brandDNA.product_specs.compare_at_price ? ` (was ${brandDNA.product_specs.currency === 'EUR' ? '€' : '$'}${brandDNA.product_specs.compare_at_price})` : ''}
+- Format: ${brandDNA.product_specs.product_format || 'N/A'}
+${brandDNA.proof_inventory ? `- Available proof: ${brandDNA.proof_inventory.total_reviews ?? 0} reviews, avg ${brandDNA.proof_inventory.average_rating ?? '?'}/5` : ''}
+Flag as CRITICAL any fabricated features, fake testimonials, or wrong prices.
+` : ''}
 Respond in valid JSON:
 {
   "score": <number 0-100>,
