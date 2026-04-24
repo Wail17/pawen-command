@@ -368,3 +368,117 @@ Legend: `[ ]` = pending, `[x]` = done, `[!]` = bug filed in BUGS.md
 - [ ] npm run lint exit 0
 - [ ] Existing gates still execute normally when conversations feature is off
 - [ ] IndexedDB v8 users migrate to v9 without losing projects or gate outputs
+
+# TEST_PLAN PATCH — append to TEST_PLAN.md after Section 11
+
+## 12. Phase U.4 — Scraping Engine Rebuild
+
+### 12.1 — Provider abstraction
+
+- [ ] SearchProvider interface defined with search and isHealthy methods
+- [ ] ScraperProvider interface defined with scrape and isHealthy methods
+- [ ] SocialProvider interface defined for Reddit Quora forums
+- [ ] VideoProvider interface defined for TikTok YouTube
+- [ ] EcomProvider interface defined for Amazon Shopify
+- [ ] Registry getSearchProvider returns first healthy provider
+- [ ] Registry auto-fallback works when primary fails health check
+- [ ] All source files no longer import provider SDKs directly
+
+### 12.2 — Provider implementations Exa Brave Bright Data TikAPI Rainforest
+
+- [ ] ExaAdapter calls Exa search API and returns SearchResult array
+- [ ] BraveAdapter calls Brave Search API as fallback
+- [ ] BrightDataAdapter fetches Reddit subreddit threads
+- [ ] BrightDataAdapter fetches Quora questions
+- [ ] TikAPIAdapter searches TikTok by hashtag
+- [ ] TikAPIAdapter fetches video comments
+- [ ] YouTubeDataAPIAdapter searches videos and fetches comments
+- [ ] RainforestAdapter fetches Amazon product reviews
+- [ ] RainforestAdapter handles amazon.es amazon.de amazon.it correctly
+- [ ] FirecrawlAdapter unchanged but cache wired
+
+### 12.3 — Meta Ad Library rewrite
+
+- [ ] /api/meta-ads now uses Meta Graph ads_archive endpoint
+- [ ] Query returns 50+ structured ads for typical niche query
+- [ ] Filters work: search_terms ad_active_status countries date range
+- [ ] Backward-compat existing callers receive ads array shape
+- [ ] No more dependency on Tavily for Meta Ad Library
+
+### 12.4 — Cache layer
+
+- [ ] Vercel KV chosen if available else Neon scrape_cache table
+- [ ] Cache key normalizes URL lowercase strips tracking params
+- [ ] Cache hit on second call within 12h returns cached
+- [ ] Cache miss triggers real fetch
+- [ ] Cache stats counter increments correctly
+- [ ] /admin/scraping-health shows cache hit ratio
+
+### 12.5 — Quality scoring
+
+- [ ] qualityScore.ts module produces 0-100 score for any chunk
+- [ ] Specificity score gives high marks for chunks with numbers brand names body parts
+- [ ] Emotion score gives high marks for emotional vocabulary
+- [ ] Relevance score uses cosine similarity to avatar embedding
+- [ ] Authority score reflects source type
+- [ ] Score 60+ chunks prioritized for injection
+- [ ] Score under 30 dropped unless no alternatives
+- [ ] Distribution logged in admin dashboard
+
+### 12.6 — Embeddings and dedup
+
+- [ ] Embedding model chosen and configured
+- [ ] Each new chunk gets embedding stored in trainingChunks
+- [ ] IndexedDB v9 to v10 migration adds embedding field
+- [ ] Existing chunks backfill embeddings lazily on access
+- [ ] Cross-source dedup collapses chunks with similarity > 0.92
+- [ ] Highest-quality version of duplicates kept
+
+### 12.7 — Health dashboard
+
+- [ ] /admin/scraping-health renders for admin
+- [ ] Per-provider tile shows status latency quota env-var-status
+- [ ] Per-source tile shows calls last 24h success rate avg quality
+- [ ] Refresh polling every 30s
+- [ ] Admin-only access enforced 401 otherwise
+
+### 12.8 — Feedback loop
+
+- [ ] chunkUtilizationRate calculated post-gate
+- [ ] Source with under 5 percent rate over 10 runs flagged
+- [ ] Flag visible in /admin/scraping-health
+- [ ] User can mute a source from the dashboard
+
+### 12.9 — Migration safety
+
+- [ ] USE_NEW_SCRAPING_STACK flag default OFF
+- [ ] When OFF legacy Tavily Apify code paths unchanged
+- [ ] When ON all source fetchers route through abstraction
+- [ ] Smoke test on test project MenoItaly succeeds with new stack
+- [ ] /admin/scraping-health shows green for all enabled providers after smoke test
+
+### 12.10 — Live integration tests with real API keys
+
+- [ ] Exa search "probiótico perro senior" returns 10+ relevant URLs
+- [ ] Bright Data Reddit search returns posts from r/dogs r/dogfood
+- [ ] TikAPI hashtag dogprobiotic returns 20+ videos with comments
+- [ ] Rainforest amazon.es probiotic dog returns reviews
+- [ ] Meta Graph ads_archive returns 50+ ads for senior dog supplement search
+- [ ] YouTube Data API returns 25+ videos for dog dental health
+- [ ] Reddit OAuth fetches r/dogs without rate-limit errors
+- [ ] Firecrawl scrape on AKC article returns clean markdown
+
+### 12.11 — Non-regression
+
+- [ ] All Phase U flows still work distillation constitution meta-loop scout
+- [ ] All Phase V flows still work conversations
+- [ ] Existing gate runs produce same or higher quality output
+- [ ] npm run build exit 0
+- [ ] npm run lint exit 0
+- [ ] IndexedDB v9 to v10 migration preserves all data
+
+### 12.12 — Cleanup after 30-day observation
+
+- [ ] Tavily and Apify env vars removed from Vercel
+- [ ] _legacy folder deleted
+- [ ] USE_NEW_SCRAPING_STACK flag removed (becomes default)

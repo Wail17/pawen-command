@@ -438,3 +438,158 @@ CONVERSATION_COST_CEILING_USD default 5. CONVERSATION_MAX_MESSAGES default 30. L
 
 ### V.12 — Ordering vs Phase U
 Phase V depends on Phase U distillation plus constitution. If U.1 distillation missing for an agent that agent participates with warning banner running on legacy persona.
+
+# SPEC PATCH — append to spec.md (after Phase W or before, doesn't matter)
+
+## Phase U.4 — Scraping Engine Rebuild (Quality-First Foundation)
+
+This phase rebuilds the data collection layer that feeds every downstream gate. The audit revealed 9 of 12 sources broken in production due to expired Tavily and Apify quotas, missing YouTube and Reddit credentials, and a misuse of Tavily as a Meta Ad Library wrapper. This phase replaces these with quality-first providers, adds a multi-provider abstraction, and instruments the pipeline with quality scoring and observability.
+
+### U.4.1 — Provider abstraction
+
+**Goal**: source files stop calling providers directly. They call interfaces.
+
+**New interfaces** in `src/lib/sources/providers/`:
+- `SearchProvider` — semantic + keyword web search. `search(query, opts) -> SearchResult[]`.
+- `ScraperProvider` — URL-to-markdown content extraction. `scrape(url, opts) -> ScrapeResult`.
+- `SocialProvider` — social media scraping (Reddit/Quora/Twitter/forums). `fetch(query, platform, opts) -> SocialResult[]`.
+- `VideoProvider` — TikTok/YouTube/Instagram comments and content. `fetch(query, platform, opts) -> VideoResult[]`.
+- `EcomProvider` — Amazon/Shopify/competitor product data. `fetch(query, opts) -> EcomResult[]`.
+
+Each provider has health-check method `isHealthy() -> {ok, message, quota}`.
+
+**Provider selection**: a registry `src/lib/sources/providers/registry.ts` exports `getSearchProvider()` etc. that returns the first healthy provider in priority order, with automatic fallback on quota exhaustion or downtime.
+
+### U.4.2 — Provider implementations
+
+**Search**: `ExaAdapter` (primary, semantic-first) + `BraveAdapter` (fallback, free tier 2k/mo).
+
+**Generic scrape**: `FirecrawlAdapter` (already present, add 12h TTL cache).
+
+**Social**: `BrightDataAdapter` (Reddit + Quora + Twitter + forums, primary). `RedditOAuthAdapter` (free secondary, rate-limited so used only for low-volume queries). Apify removed.
+
+**Video**: `TikAPIAdapter` for TikTok. `YouTubeDataAPIAdapter` for YouTube. Both primary, no fallback (these have free tiers + low cost, no need for backup).
+
+**Ecom**: `RainforestAdapter` for Amazon (covers amazon.es / .de / .it). `ShopifyPublicAdapter` for Shopify product/review fetch (already present). 
+
+**Meta Ads**: `MetaGraphAdapter` using `META_ACCESS_TOKEN` directly against `/v19.0/ads_archive`. Replaces the Tavily-based hack at `src/app/api/meta-ads/route.ts`.
+
+**Removed providers**: TavilyAdapter (search), ApifyAdapter (all uses). Code archived in `src/lib/sources/_legacy/` for 30 days then deleted.
+
+### U.4.3 — Source files refactor
+
+Each file in `src/lib/sources/` is rewritten to call the abstraction:
+- `reddit.ts` → calls `getSocialProvider().fetch(query, 'reddit')`. Bubbles errors via `RawSourceData.error`.
+- `quora.ts` → same pattern, platform 'quora'.
+- `youtube.ts` → calls `getVideoProvider().fetch(query, 'youtube')`.
+- `tiktok.ts` → calls `getVideoProvider().fetch(query, 'tiktok')`.
+- `amazon.ts` → calls `getEcomProvider().fetch(query, 'amazon')`.
+- `firecrawl.ts` → calls `getScraperProvider().scrape(url)`.
+- `tavily.ts` → DELETED (callers redirected to `getSearchProvider().search()`).
+- `apify.ts` → DELETED.
+
+All source fetchers must surface upstream errors via `error` field on `RawSourceData`. No silent `items: []` returns when the provider is broken.
+
+### U.4.4 — Meta Ad Library rewrite
+
+`src/app/api/meta-ads/route.ts` rewritten to:
+- Use `MetaGraphAdapter`.
+- Query `/v19.0/ads_archive` with `META_ACCESS_TOKEN`, support filters: `ad_active_status`, `search_terms`, `ad_reached_countries`, `ad_delivery_date_min/max`.
+- Return structured ads: `{id, page_name, ad_creative_bodies[], ad_creative_link_titles[], snapshot_url, eu_total_reach, demographic_distribution, etc}`.
+- Backward-compat: existing callers expecting `{ads: []}` still work.
+- Quality leap: typical query yields 50-200 structured ads per niche vs ~0-3 from Tavily wrapper.
+
+### U.4.5 — Firecrawl cache layer
+
+New module `src/lib/sources/scrapeCache.ts`:
+- Storage: Vercel KV (preferred) or new Neon table `scrape_cache` if KV unavailable.
+- Key: SHA-256 of normalized URL (lowercase, strip tracking params).
+- TTL: 12h default, configurable per request.
+- Hit on second call within TTL → return cached, increment hit counter.
+- Cache stats exposed at `/admin/scraping-health`.
+- Estimated savings: 50%+ on competitor-page rescraping during conversations.
+
+### U.4.6 — Quality scoring
+
+New module `src/lib/sources/qualityScore.ts`:
+- Each scraped chunk receives a 0-100 quality score before downstream injection.
+- Dimensions:
+  - **Specificity** (0-25): verbatim concrete details vs vague generalities. Heuristics: presence of numbers, time references, brand names, body parts, specific scenarios.
+  - **Emotion intensity** (0-25): genuine frustration/joy vs neutral. Heuristics: emotional vocabulary density, capitalization, emojis, exclamation patterns.
+  - **Avatar relevance** (0-30): cosine similarity between chunk embedding and avatar excavation summary embedding.
+  - **Source authority** (0-20): customer testimonial > forum post > review > SEO blog. Mapped per source type.
+- Score ≥ 60 → high quality, prioritized in injection.
+- Score < 30 → low quality, dropped from injection unless desperate (no high-quality available).
+- Distribution logged for observability.
+
+### U.4.7 — Embeddings + cross-source dedup
+
+New module `src/lib/sources/embeddings.ts`:
+- Embedding model: `text-embedding-3-small` via Anthropic-compatible endpoint, or local `bge-small-en-v1.5` if cost matters.
+- Each chunk gets an embedding stored in `trainingChunks.embedding` field (pgvector or Float32Array).
+- Cross-source dedup: chunks with cosine similarity > 0.92 collapsed into one (the highest-quality version kept).
+- Estimated reduction: 30-40% chunk volume after dedup.
+- IndexedDB v9 to v10 migration: add `embedding` field on TrainingChunk type, add `by-similarity-hash` index.
+
+### U.4.8 — Scraping health dashboard
+
+New page `/admin/scraping-health`:
+- Per-provider tile showing:
+  - Health status: green / yellow / red
+  - Last 100 calls success rate
+  - p50 / p95 latency
+  - Quota remaining (when provider exposes it)
+  - Env var status: present / missing
+  - Last error message
+- Per-source tile (reddit, tiktok, youtube, amazon, etc.):
+  - Calls last 24h, success rate
+  - Avg quality score of returned chunks
+  - Top 5 most-recent errors
+- Refresh interval: 30s polling.
+- Admin-only route.
+
+### U.4.9 — Feedback loop on scraping quality
+
+When a gate completes, count how many of its injected chunks were actually referenced in the output (quoted, paraphrased, scored as relevant by reviewer).
+- Calculate `chunkUtilizationRate = chunksReferenced / chunksInjected`.
+- If < 5% across 10 consecutive gate runs for a given source → flag in admin dashboard "Source X producing low-utility data".
+- Stored in new field `scrape_health.utilizationRate` per source.
+- Surface in `/admin/scraping-health` so user can decide to mute a source.
+
+### U.4.10 — Removed env vars (cleanup)
+
+After Phase U.4 deploy and 30-day observation, remove from Vercel:
+- `TAVILY_API_KEY` (no longer used)
+- `APIFY_TOKEN` (no longer used)
+
+Replace with:
+- `EXA_API_KEY`
+- `BRAVE_API_KEY` (optional fallback)
+- `BRIGHTDATA_API_KEY` + `BRIGHTDATA_DATASET_ID`
+- `TIKAPI_KEY`
+- `RAINFOREST_API_KEY`
+- `YOUTUBE_API_KEY`
+- `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_USER_AGENT`
+- `META_ACCESS_TOKEN` (already present, now actually used for Ad Library)
+
+### U.4.11 — Migration plan
+
+Build behind feature flag `USE_NEW_SCRAPING_STACK` (default OFF). When ON:
+- All source fetchers route through new abstraction.
+- Tavily/Apify code untouched but unreachable.
+
+When user toggles to ON in production:
+- Run a smoke test on one project end-to-end.
+- Monitor `/admin/scraping-health` for 24h.
+- If quality scores trend up and no provider shows red → permanent on, set `USE_NEW_SCRAPING_STACK=1` as default.
+- If issues → toggle off, fix, retry.
+
+After 30 days stable → remove legacy code from `src/lib/sources/_legacy/` and remove the flag.
+
+### U.4.12 — Suspicious zones
+
+31. New providers fail in unexpected ways under high load. Mitigation: smoke test with 5x normal volume before declaring stable.
+32. Bright Data rate-limits unknown until first heavy use. Mitigation: monitor `/admin/scraping-health` Bright Data tile during first week.
+33. Embedding cost on existing chunks at backfill. Mitigation: backfill embeddings lazily on next access, not all-at-once.
+34. Quality scoring false positives drop useful chunks. Mitigation: log all dropped chunks for first 7 days, manual review, tune thresholds.
+35. Cache invalidation across deploys. Mitigation: cache key includes app version hash, deploy bumps invalidate stale entries.
