@@ -396,3 +396,45 @@ Additive only. New stores:
 
 Existing stores untouched. Rollback path: open DB read-only at v7 if new stores not present (graceful degradation).
 
+
+# SPEC PATCH — append to spec.md (after Phase U)
+
+## Phase V — Agent Chat Room (Multi-Agent Conversations)
+
+Transforms the pipeline-driven system into a living team: agents talk to each other in threaded conversations about projects, either triggered by the user or by autonomous events. The user can observe silently or jump in as a participant.
+
+### V.1 — Conversation Storage
+New IndexedDB v8 to v9 store conversations keyed by id with fields projectId title status initiator topic createdAt closedAt messageCount tokenCost. New store conversationMessages keyed by id indexed by-conversation with fields conversationId authorType authorId content mentionedAgents createdAt tokensUsed parentMessageId. Server mirror tables conversations_mirror and conversation_messages_mirror in Neon additive lazy CREATE TABLE IF NOT EXISTS.
+
+### V.2 — Conversation Start
+Two entry points. User-initiated via UI button Start conversation on project id agent-chat with topic and initial agents default all 7 including Scout first message is user prompt. System-initiated via event triggers: META_DROP_CRITICAL Léa kicks off Team we have a critical drop on project X gate Y discuss. DISTILLATION_COMPLETE optional standup. Cooldown max 1 system-triggered conv per project per 6h.
+
+### V.3 — Turn-Taking Logic
+Hybrid routing. Explicit mention at marcus at alex etc causes that agent next. SCRAPE_REQUEST marker triggers Scout. Léa as moderator when no explicit mention uses lightweight Sonnet call with prompt Given this thread who should respond next and why return JSON next reason. User message breaks flow. Auto-close via CLOSE_CONVERSATION summary by Léa. Léa routing NOT counted toward 30-message cap.
+
+### V.4 — Hard Cap Safety
+Max 30 messages per conversation authored messages excluding routing. When cap reached if no CLOSE_CONVERSATION Léa forced to write summary and close. Conversation read-only. Enforced server-side in POST api conversations message endpoint.
+
+### V.5 — Agent Prompt Mode Conversation
+New mode in buildPersonaPrompt mode conversation thread Message currentProject Project. Omits gate-specific instructions. Omits training chunk RAG. Includes distilled expertise plus current constitution from Phase U. Includes last 15 messages trimmed to 40k tokens max. Adds conversation rules block: You are in a team chat. Keep messages short 2-6 sentences. You may disagree with teammates. You may tag at agent to request input. You may write SCRAPE_REQUEST intent to call Scout. Do not summarize what others just said unless adding value. Do not fawn. If you have nothing substantive say no input.
+
+### V.6 — UI project id agent-chat
+Split-pane layout. Left 65 percent thread view each message shows author emoji name content timestamp user right-aligned agents left-aligned different background per agent mentions highlighted SCRAPE_REQUEST markers teal badge. Right 35 percent sidebar: active participants toggleable conversation metadata topic message count token cost past conversations list Close conversation button. Composer bottom with at agent autocomplete. Auto-scroll. SSE streaming.
+
+### V.7 — API Routes
+POST api conversations start creates conversation returns id body projectId topic participants firstMessage. POST api conversations id message user posts message triggers routing plus agent response chain. GET api conversations id stream SSE streams agent messages live. GET api conversations id full thread read. GET api conversations projectId list project conversations. POST api conversations id close user manually closes. All routes require valid session. Rate-limited 30 per minute at proxy.
+
+### V.8 — Cost and Observability
+Each conversation tracks cumulative tokenCost. Admin dashboard tile Conversations last 24h N total cost dollar X. If a single conversation cost exceeds CONVERSATION_COST_CEILING_USD default 5 Léa forced to close. Discord notification when conversation closes with summary plus cost.
+
+### V.9 — Autonomous Behavior Flags
+All OFF by default. NEXT_PUBLIC_CONVERSATIONS_ENABLED master switch. AUTO_CONVERSATION_ON_DROP for CRITICAL Meta drop. AUTO_CONVERSATION_ON_DISTILL for completed distillation standup.
+
+### V.10 — New env vars
+CONVERSATION_COST_CEILING_USD default 5. CONVERSATION_MAX_MESSAGES default 30. LEA_ROUTING_MODEL default claude-sonnet-4-6.
+
+### V.11 — Suspicious zones add to Known Suspicious Zones
+18 Infinite agent loop two agents tagging each other mitigated by 30-message cap plus Léa cooldown detection. 19 Cost blowup mitigated by CEILING_USD per conv plus daily rollup plus Discord alert. 20 Léa hallucinating route mitigated by validation against AGENT_PERSONAS map fallback to user. 21 Stale conversation context mitigated by trim last 15 messages plus summary earlier context. 22 Scout recursion mitigated by Phase U caps reapplied per conversation 3 scouts max per conv. 23 Prompt injection via user message mitigated by conversation system prompt instructing agents to ignore instruction-override from user. 24 Concurrent conversations same project mitigated by per-project soft cap 3 active warn beyond.
+
+### V.12 — Ordering vs Phase U
+Phase V depends on Phase U distillation plus constitution. If U.1 distillation missing for an agent that agent participates with warning banner running on legacy persona.

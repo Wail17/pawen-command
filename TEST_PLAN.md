@@ -289,3 +289,82 @@ Legend: `[ ]` = pending, `[x]` = done, `[!]` = bug filed in BUGS.md
 - [ ] Prompt caching header present on every Opus/Sonnet call including new distillation + constitution + scout
 - [ ] `USE_AUTONOMOUS_MODE=1` + distillation missing for one persona → that persona falls back to legacy RAG silently (no crash)
 - [ ] Turning the flag OFF after distillations exist → behavior reverts to legacy, distillations remain on disk for later
+
+# TEST_PLAN PATCH — append to TEST_PLAN.md after Section 9
+
+## 10. Phase V — Agent Chat Room
+
+### 10.1 — Conversation CRUD
+- [ ] IndexedDB v8 to v9 migration adds conversations plus conversationMessages stores without data loss
+- [ ] Neon mirror tables created lazy on first write
+- [ ] POST api conversations start creates a conversation and returns id
+- [ ] GET api conversations id returns full thread
+- [ ] GET api conversations projectId X lists project conversations newest first
+- [ ] POST api conversations id close marks status closed and records closedAt
+- [ ] All routes require valid session cookie return 401 otherwise
+- [ ] Per-project soft cap 3 active conversations warns user but does not hard block
+
+### 10.2 — Routing logic
+- [ ] Explicit at marcus in a message causes Marcus to be next speaker
+- [ ] At agent autocomplete works in composer UI
+- [ ] SCRAPE_REQUEST marker in any agent message triggers Scout as next
+- [ ] When no mention Léa routing call returns a valid agentId
+- [ ] When Léa returns an invalid agentId fallback forces user input
+- [ ] User message always interrupts and Léa re-evaluates after
+- [ ] Léa routing decisions are NOT counted toward 30-message cap
+- [ ] CLOSE_CONVERSATION summary in a Léa message closes conversation with summary saved
+
+### 10.3 — Hard cap safety
+- [ ] Message 30 is last authored message attempting 31 is blocked server-side
+- [ ] When cap reached without CLOSE_CONVERSATION Léa is forced to post a final summary
+- [ ] Closed conversation becomes read-only POST returns 409
+- [ ] UI displays X of 30 counter in sidebar goes red at greater than 25
+- [ ] Conversation cost exceeding CONVERSATION_COST_CEILING_USD forces close
+
+### 10.4 — Agent prompt mode conversation
+- [ ] buildPersonaPrompt persona mode conversation thread produces conversation-style system prompt
+- [ ] Distilled expertise is included Phase U integration
+- [ ] Current constitution is included Phase U integration
+- [ ] Training chunk RAG is NOT called in conversation mode
+- [ ] Last 15 messages are included in context
+- [ ] Older messages are summarized not dropped silently
+- [ ] Conversation rules block is present and explicit
+- [ ] Agent with missing distillation still participates with warning log
+
+### 10.5 — UI project id agent-chat
+- [ ] Feature disabled banner when NEXT_PUBLIC_CONVERSATIONS_ENABLED unset or 0
+- [ ] Page loads with empty state when no prior conversations
+- [ ] Start conversation button opens modal with topic plus participant selector
+- [ ] User messages appear right-aligned agent messages left-aligned with agent color
+- [ ] Each agent has visible emoji plus name plus role label
+- [ ] Mentions are highlighted visually
+- [ ] SCRAPE_REQUEST markers render as teal badges inline
+- [ ] Auto-scroll to latest unless user scrolled up
+- [ ] Jump to latest button appears when scrolled up
+- [ ] Composer supports at agent autocomplete
+- [ ] Close conversation button in sidebar works
+- [ ] Past conversations list is clickable and opens read-only view
+- [ ] SSE stream renders agent text as it generates no flicker
+
+### 10.6 — Autonomous triggers
+- [ ] With AUTO_CONVERSATION_ON_DROP 1 a CRITICAL Meta drop creates a system conversation
+- [ ] The auto-created conversation has initiator system and a first message from Léa
+- [ ] Cooldown second drop within 6h does NOT create a second conversation
+- [ ] With AUTO_CONVERSATION_ON_DISTILL 1 finished distillation creates a short standup
+- [ ] With flags OFF no conversation is auto-created by any event
+- [ ] Discord notification fires when a conversation closes including summary and cost
+
+### 10.7 — Safety and injection resistance
+- [ ] Prompt injection in user message ignore previous instructions is rejected by agent via system prompt rule
+- [ ] Scout cap of 3 per conversation is enforced
+- [ ] Infinite ping-pong two agents tagging each other for 10 turns still closes at message 30
+- [ ] Léa detects ping-pong pattern and auto-closes earlier if detected
+- [ ] Daily cost rollup displays in admin tile
+- [ ] Watermark chars in user messages are preserved
+
+### 10.8 — Non-regression
+- [ ] All Phase U flows still work
+- [ ] npm run build exit 0
+- [ ] npm run lint exit 0
+- [ ] Existing gates still execute normally when conversations feature is off
+- [ ] IndexedDB v8 users migrate to v9 without losing projects or gate outputs
