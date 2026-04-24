@@ -1,3 +1,99 @@
+# Phase V — Agent Chat Room
+
+Released: 2026-04-24 (ralph-loop iterations 1-8)
+
+## Summary
+
+Pawen is no longer just a pipeline — agents now hold real multi-agent conversations about a project, tagged by each other or auto-started by system events (Meta drop). The user observes or jumps in. Léa moderates routing via a lightweight Sonnet call, and she (and only she) can close a thread with a summary. All behavior is behind `NEXT_PUBLIC_CONVERSATIONS_ENABLED` and every auto-trigger is a separate flag.
+
+## What works live on prod
+
+Smoke-tested end-to-end on `pawen-command-center.vercel.app`:
+
+- `POST /api/conversations/start` — creates conv, dispatches 3 agent turns with genuine pushback (Alex → Marcus → Nina with named reasoning, ~$0.07 per turn chain)
+- `POST /api/conversations/:id/message` — user @mentions route to the tagged agent
+- `POST /api/conversations/:id/close` — Léa summarizes ("Team landed on defiance-framing as the lead hook direction…") then DB flips status
+- `GET /api/conversations?projectId=X` — list
+- `GET /api/conversations/:id` — full thread
+
+## New storage
+
+| Layer | Store | Purpose |
+| --- | --- | --- |
+| IDB v9 | `conversations` | Conversation metadata per client |
+| IDB v9 | `conversationMessages` | Full thread locally |
+| Neon  | `conversations_mirror` | Server source of truth |
+| Neon  | `conversation_messages_mirror` | Thread in Postgres |
+
+Lazy `CREATE TABLE IF NOT EXISTS` — no manual migration required.
+
+## Architecture
+
+- **Persona prompt extension**: `buildPersonaPrompt(persona, { mode: 'conversation', conversationTopic, participants })` emits the CONVERSATION MODE block (2-6 sentence messages, @tag protocol, `SCRAPE_REQUEST:` and `CLOSE_CONVERSATION:` markers, prompt-injection resistance).
+- **Routing** (`src/lib/conversations/routing.ts`): parsers for @mentions / SCRAPE_REQUEST / CLOSE_CONVERSATION, plus a Sonnet-based Léa moderator call. Ping-pong detector (`detectPingPong`) forces override to Léa after A-B-A-B pattern.
+- **Engine** (`src/lib/conversations/engine.ts`): pure agent-turn runner. Loads distillation + constitution from Neon (V.12 — warns if missing), builds conversation-mode prompt, calls Anthropic with last 15 messages trimmed to 2k chars each, returns content + tokens + cost.
+- **Dispatch** (`src/lib/conversations/dispatch.ts`): the loop. For each chain step: check cap/ceiling → detect ping-pong → decide speaker → run agent turn → persist → update stats → repeat up to N.
+- **System start** (`src/lib/conversations/systemStart.ts`): used by the Meta cron (`AUTO_CONVERSATION_ON_DROP=1`) to open a thread from Léa on CRITICAL drop. 6h cooldown per project.
+
+## New API routes
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/conversations/start` | Create conv + first user or system message + first chain |
+| `POST /api/conversations/[id]/message` | User posts, server chains up to 5 agent turns |
+| `GET  /api/conversations/[id]` | Fetch full thread |
+| `GET  /api/conversations?projectId=X` | List conversations for a project |
+| `POST /api/conversations/[id]/close` | User-initiated close; optional Léa summary |
+| `GET  /api/admin/conversations-stats` | Admin tile — 24h / 7d stats |
+
+All session-gated. No admin-only routes for conversations — it's a first-class user feature.
+
+## UI
+
+New page `/project/[id]/agent-chat`:
+- Split 65/35 layout: thread left, sidebar right
+- Per-agent tinted bubbles, emoji + role label, @mention syntax-highlighted, SCRAPE_REQUEST/CLOSE_CONVERSATION markers rendered as pill badges
+- Composer with Ctrl/⌘+Enter to send
+- Sidebar: live message/cost counter (goes red >25/30), participants list, past conversations list, Close button
+
+Feature-disabled banner renders when flag is off.
+
+## Feature flags
+
+| Flag | Default | Role |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CONVERSATIONS_ENABLED` | OFF | Master switch |
+| `AUTO_CONVERSATION_ON_DROP` | OFF | System conv on Meta CRITICAL drop |
+| `AUTO_CONVERSATION_ON_DISTILL` | OFF | Standup conv after distillation complete (hook point wired; trigger site TODO) |
+| `CONVERSATION_COST_CEILING_USD` | 5 | Force-close ceiling |
+| `CONVERSATION_MAX_MESSAGES` | 30 | Hard cap on authored messages |
+| `LEA_ROUTING_MODEL` | claude-sonnet-4-6 | Léa's routing model |
+
+## Safety mitigations (V.11)
+
+| # | Risk | Mitigation |
+| --- | --- | --- |
+| 18 | Infinite agent loop (A/B tagging) | `detectPingPong` in dispatch → force override to Léa |
+| 19 | Cost blowup | Per-conv `CONVERSATION_COST_CEILING_USD`; Léa force-close above; Discord notif on close with cost |
+| 20 | Léa hallucinates a non-existent agent | `decideNextSpeaker` validates against a fixed whitelist; falls back to `user` |
+| 21 | Stale conversation context | `buildThreadMessages` slices last 15 messages × 2k chars each |
+| 22 | Scout recursion | Scout is a canned placeholder message in chat mode — no recursive scrape trigger inside the room; real Scout runs via its own Phase U path |
+| 23 | Prompt injection via user message | Persona prompt CONVERSATION MODE block instructs agent to ignore identity/override attempts from user messages |
+| 24 | Concurrent convs same project | `countActiveConversationsForProject` available for soft warn (UI has hook point); no hard block |
+
+## Bugs fixed en route
+
+- **BUG-003** — Neon driver couldn't infer type for parameters passed into `jsonb_build_object` → "could not determine data type of parameter $N". Fix: explicit `::text` cast on every parameter landing in a jsonb builder (see `persistence.ts` `markConversationClosed`).
+
+## Known limitations
+
+- SSE streaming NOT implemented — client polls via the route response. Non-blocking for UX since agent replies return within one HTTP roundtrip. See TODO.md for the SSE upgrade path.
+- Scout inside a conversation is a canned placeholder, not a full Scout run. The real Scout dispatcher is wired to sub-agents (Phase U.3c), not to chat messages. Cleaner separation; less recursion risk.
+- `AUTO_CONVERSATION_ON_DISTILL` flag reserved — trigger-site not wired yet (TODO.md).
+- No UI for admin conversations-stats tile yet — endpoint exists, god-panel integration pending.
+
+---
+
 # Phase U — Self-Learning Autonomous Agency
 
 Released: 2026-04-24 (iterations 1-10 via ralph-loop)

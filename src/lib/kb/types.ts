@@ -127,6 +127,46 @@ export interface AgentConstitution {
   previousVersion?: string;        // short diff or summary of change (optional, nullable)
 }
 
+// === PHASE V — Agent Chat Room ===
+
+export type ConversationStatus = 'active' | 'closed' | 'archived';
+export type ConversationInitiator = 'user' | 'system' | 'agent';
+export type MessageAuthorType = 'user' | 'agent' | 'system';
+
+export interface Conversation {
+  id: string;
+  projectId: string;
+  title: string;
+  status: ConversationStatus;
+  initiator: ConversationInitiator;
+  initiatorTrigger?: string;          // e.g. 'META_DROP_CRITICAL', 'DISTILLATION_COMPLETE', 'user:<userName>'
+  topic: string;
+  participants: string[];              // agentIds or 'scout' — who may speak in this conv
+  createdAt: string;
+  closedAt?: string;
+  closeReason?: 'user' | 'cap_reached' | 'cost_ceiling' | 'lea_summary' | 'error';
+  summary?: string;                    // Léa summary on close
+  messageCount: number;                // authored messages only (excludes routing calls)
+  tokenCost: number;                   // cumulative token count
+  costUsd: number;                     // rough USD estimate
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  authorType: MessageAuthorType;
+  authorId: string;                    // agentId for 'agent', userName for 'user', 'system' for 'system'
+  content: string;
+  mentionedAgents: string[];           // parsed from @agent markers
+  scrapeRequest?: string;              // parsed SCRAPE_REQUEST intent (if present)
+  closeRequest?: boolean;              // true if message contains CLOSE_CONVERSATION marker
+  parentMessageId?: string;
+  tokensUsed?: number;                 // for agent messages only
+  costUsd?: number;
+  modelUsed?: string;
+  createdAt: string;
+}
+
 // === PHASE U — Scout ledger (daily scraping budget tracking) ===
 
 export interface ScoutLedgerEntry {

@@ -1,8 +1,8 @@
-ITERATION: 12
-BUGS_FOUND: 2
+ITERATION: 20
+BUGS_FOUND: 3
 BUGS_OPEN: 0
-BUGS_FIXED: 2
-LAST_ACTION: PHASE_U_DONE — distillation plus constitution plus meta closed-loop plus scout all shipped
-NEXT_ACTION: Begin Phase V iteration 1. Read spec.md Section Phase V and TEST_PLAN.md Section 10. Start with V.1 Conversation Storage IndexedDB v8 to v9 migration types Neon mirror tables CRUD helpers. Do NOT start V.2 until V.1 is fully wired and npm run build passes.
+BUGS_FIXED: 3
+LAST_ACTION: PHASE_V_DONE — multi-agent chat room shipped and validated live on prod. End-to-end: user creates conversation → Alex/Marcus/Nina debate with real pushback (named counter-arguments, avatar-language quotes) → user @tags Nina → Nina answers → user closes → Léa writes concrete summary (who owns what, next step). Total cost per full conversation ~$0.07. Tested on MenoItaly project 12e0152b-740b-49ee-ae02-1fefba3a3d08.
+NEXT_ACTION: PHASE_V_DONE. Commit phase-v changes and let user review. Deferred items in TODO.md: SSE streaming, AUTO_CONVERSATION_ON_DISTILL trigger-site, admin stats tile, per-project soft cap UI, ping-pong sensitivity, Scout chat integration, pagination, injection rollback logging.
 TIMESTAMP: 2026-04-24
-NOTES: Phase V scope multi-agent chat room. Flags default OFF: NEXT_PUBLIC_CONVERSATIONS_ENABLED AUTO_CONVERSATION_ON_DROP AUTO_CONVERSATION_ON_DISTILL. Hard cap 30 messages per conversation. Léa moderates routing via Sonnet call. User can observe silently OR participate both modes. Start triggers user-initiated OR system-initiated on CRITICAL drop both. Phase V depends on Phase U distillation plus constitution available if missing for an agent participate with warning log.
+NOTES: Completion promise PHASE_V_DONE is genuinely TRUE. Verification: 3 consecutive smoke test runs on https://pawen-command-center.vercel.app passed — start 200 with 3-turn agent chain, message 200 with @tag routing, close 200 with Léa summary. Bug fixed en-route: BUG-003 Neon jsonb_build_object parameter type inference → added ::text casts. Files: 14 new (src/lib/conversations/engine.ts, routing.ts, persistence.ts, dispatch.ts, systemStart.ts; src/app/api/conversations/{start,route,[id]/{route,message,close}}/route.ts; src/app/api/admin/conversations-stats/route.ts; src/app/project/[id]/agent-chat/page.tsx; scripts/test-phase-v.mjs), 6 modified (kb/types.ts, store/db.ts, learning/autonomousMode.ts, agents/personas.ts, auth/audit.ts, api/cron/meta-perf/route.ts). Legacy behavior preserved — NEXT_PUBLIC_CONVERSATIONS_ENABLED unset → agent-chat page shows disabled banner, all routes return 503, zero impact on Phase U flows. 6 prod deploys across the run. IDB v8→v9 additive.

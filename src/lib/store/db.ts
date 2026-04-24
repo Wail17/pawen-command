@@ -7,7 +7,7 @@
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Project, GateOutput, isPerSubAvatarGate } from '../types';
-import { KnowledgeEntry, TrainingSource, AgentMemoryEntry, TrainingChunk, PersonaDistillation, AgentConstitution, ScoutLedgerEntry, AgentId } from '../kb/types';
+import { KnowledgeEntry, TrainingSource, AgentMemoryEntry, TrainingChunk, PersonaDistillation, AgentConstitution, ScoutLedgerEntry, AgentId, Conversation, ConversationMessage } from '../kb/types';
 import { GoldOutput, LearningProfile } from '../learning/types';
 import { Template } from '../templates/types';
 import { VideoAdScript } from '../video/types';
@@ -129,10 +129,26 @@ interface PawenDB extends DBSchema {
       'by-day': string;
     };
   };
+  // === v9: Phase V — Agent chat room ===
+  conversations: {
+    key: string;                   // conversation id (uuid)
+    value: Conversation;
+    indexes: {
+      'by-project': string;
+      'by-status': string;
+    };
+  };
+  conversationMessages: {
+    key: string;                   // message id (uuid)
+    value: ConversationMessage;
+    indexes: {
+      'by-conversation': string;
+    };
+  };
 }
 
 const DB_NAME = 'pawen-command-center';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 let dbInstance: IDBPDatabase<PawenDB> | null = null;
 
@@ -211,6 +227,16 @@ async function getDB(): Promise<IDBPDatabase<PawenDB>> {
         const scoutStore = db.createObjectStore('scoutLedger', { keyPath: 'id' });
         scoutStore.createIndex('by-project', 'projectId');
         scoutStore.createIndex('by-day', 'day');
+      }
+
+      // === v9 stores: Phase V — Agent chat room ===
+      if (oldVersion < 9) {
+        const convStore = db.createObjectStore('conversations', { keyPath: 'id' });
+        convStore.createIndex('by-project', 'projectId');
+        convStore.createIndex('by-status', 'status');
+
+        const msgStore = db.createObjectStore('conversationMessages', { keyPath: 'id' });
+        msgStore.createIndex('by-conversation', 'conversationId');
       }
     },
   });
@@ -756,4 +782,55 @@ export async function countScoutCallsForProjectToday(projectId: string): Promise
   const today = new Date().toISOString().slice(0, 10);
   const entries = await getScoutLedgerForProject(projectId);
   return entries.filter(e => e.day === today).length;
+}
+
+// ============================================================
+// Phase V — Conversations + Messages
+// ============================================================
+
+export async function saveConversation(rec: Conversation): Promise<void> {
+  const db = await getDB();
+  await db.put('conversations', rec);
+}
+
+export async function getConversation(id: string): Promise<Conversation | undefined> {
+  const db = await getDB();
+  return db.get('conversations', id);
+}
+
+export async function getConversationsForProject(projectId: string): Promise<Conversation[]> {
+  const db = await getDB();
+  const rows = await db.getAllFromIndex('conversations', 'by-project', projectId);
+  return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getActiveConversationsForProject(projectId: string): Promise<Conversation[]> {
+  const rows = await getConversationsForProject(projectId);
+  return rows.filter(r => r.status === 'active');
+}
+
+export async function getAllConversations(): Promise<Conversation[]> {
+  const db = await getDB();
+  return db.getAll('conversations');
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('conversations', id);
+  // Also purge messages
+  const msgs = await db.getAllFromIndex('conversationMessages', 'by-conversation', id);
+  const tx = db.transaction('conversationMessages', 'readwrite');
+  for (const m of msgs) await tx.store.delete(m.id);
+  await tx.done;
+}
+
+export async function appendConversationMessage(msg: ConversationMessage): Promise<void> {
+  const db = await getDB();
+  await db.put('conversationMessages', msg);
+}
+
+export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
+  const db = await getDB();
+  const msgs = await db.getAllFromIndex('conversationMessages', 'by-conversation', conversationId);
+  return msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }

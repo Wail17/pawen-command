@@ -1,3 +1,16 @@
+# Phase V — Deferred / follow-up items
+
+- [ ] **SSE streaming for agent turns**. Today `/api/conversations/[id]/message` returns the whole chain in one response (can take 30-60s). Add `GET /api/conversations/[id]/stream` that emits each agent token as it arrives. Client swaps from polling to the stream when flag is on.
+- [ ] **AUTO_CONVERSATION_ON_DISTILL trigger-site**. Flag exists and dispatch works, but nothing calls `startSystemConversation` after `/api/admin/distill` completes. Either hook into the distill route response path or add a lightweight post-distill daemon. Short conv (3-4 turns) where the freshly-distilled agent greets the team with its top insight.
+- [ ] **Admin tile for `/api/admin/conversations-stats`**. Endpoint exists; add a card on the god panel overview tab rendering: 24h count, 7d count, total cost, avg messages/conv. Also a "watch live" link to any active conversation.
+- [ ] **Per-project soft cap UI**. Server has `countActiveConversationsForProject` — plumb it through `/api/conversations` list response as a `warning: "3+ active"` field. Page shows toast.
+- [ ] **Ping-pong detector sensitivity**. Current detector needs exactly A-B-A-B over 4 agent turns. Also trigger on 3-turn patterns where two agents tagged each other twice with no substantive shift.
+- [ ] **Scout integration inside chat**. Today a `@scout` tag yields a canned stub message. Add a background async that runs the real Scout orchestrator after the canned message, then drops a follow-up agent message with Scout's results via `startSystemConversation`-style flow.
+- [ ] **Full history pagination**. `loadThread` returns every message. For long-running convs (near cap), paginate and render older batches on scroll-up.
+- [ ] **Rollback on injected identity override attempts**. V.11 item 23 is mitigated via prompt rule, but we don't detect/log successful injections. Add a post-response regex that flags replies containing `I am an AI language model` / `my instructions` / etc.
+
+---
+
 # Phase U — Deferred / follow-up items
 
 ## Short (next iteration)

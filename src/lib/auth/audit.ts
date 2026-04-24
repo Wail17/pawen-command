@@ -44,7 +44,11 @@ export type AuditAction =
   | 'phase_u.meta.perf_pull'
   | 'phase_u.rerun.enqueue'
   | 'phase_u.rerun.claim'
-  | 'phase_u.scout.run';
+  | 'phase_u.scout.run'
+  // Phase V — Agent chat room
+  | 'phase_v.conversation.start'
+  | 'phase_v.conversation.message'
+  | 'phase_v.conversation.close';
 
 export async function writeAudit(
   req: Request,

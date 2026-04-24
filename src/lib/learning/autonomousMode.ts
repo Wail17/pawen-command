@@ -57,3 +57,37 @@ export function getConstitutionRefreshEvery(): number {
   const raw = Number(process.env.CONSTITUTION_REFRESH_EVERY);
   return Number.isFinite(raw) && raw > 0 ? raw : 10;
 }
+
+// --- Phase V flags ---
+
+// Client-readable. Master switch for the chat room.
+export function isConversationsEnabled(): boolean {
+  return boolish(process.env.NEXT_PUBLIC_CONVERSATIONS_ENABLED);
+}
+
+// Server-only. Creates a system conversation on CRITICAL Meta drop.
+export function isAutoConversationOnDropEnabled(): boolean {
+  return boolish(process.env.AUTO_CONVERSATION_ON_DROP);
+}
+
+// Server-only. Creates a standup conversation after a distillation completes.
+export function isAutoConversationOnDistillEnabled(): boolean {
+  return boolish(process.env.AUTO_CONVERSATION_ON_DISTILL);
+}
+
+// Server-only. Per-conversation cost ceiling (USD). Léa forced to close above this.
+export function getConversationCostCeilingUsd(): number {
+  const raw = Number(process.env.CONVERSATION_COST_CEILING_USD);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5;
+}
+
+// Server-only. Hard cap on authored messages per conversation.
+export function getConversationMaxMessages(): number {
+  const raw = Number(process.env.CONVERSATION_MAX_MESSAGES);
+  return Number.isFinite(raw) && raw > 0 ? raw : 30;
+}
+
+// Server-only. Model Léa uses for routing decisions (lightweight).
+export function getLeaRoutingModel(): string {
+  return process.env.LEA_ROUTING_MODEL || 'claude-sonnet-4-6';
+}

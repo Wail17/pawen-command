@@ -14,8 +14,9 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@/lib/db/client';
 import { fetchMetaCampaignInsights, detectDrop } from '@/lib/meta-ads/perfPull';
-import { isAutoRerunEnabled } from '@/lib/learning/autonomousMode';
+import { isAutoRerunEnabled, isAutoConversationOnDropEnabled, isConversationsEnabled } from '@/lib/learning/autonomousMode';
 import { writeAudit } from '@/lib/auth/audit';
+import { startSystemConversation } from '@/lib/conversations/systemStart';
 
 export const maxDuration = 300;
 
@@ -217,6 +218,20 @@ export async function GET(req: Request) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ content: text }),
             }).catch(() => { /* non-blocking */ });
+          }
+
+          // Phase V.2 — system-initiated conversation on CRITICAL drop.
+          if (isConversationsEnabled() && isAutoConversationOnDropEnabled()) {
+            const projectName = typeof proj.data.name === 'string' ? proj.data.name : proj.id;
+            const topic = `Meta drop CRITICAL on ${projectName} / campaign ${cid}`;
+            const opening = `Team — we just detected a CRITICAL drop on project ${projectName} (campaign ${cid}): ${verdict.reason}. I've queued a re-run on ${gateToRerun} (status=${status}). Before we rerun, let's discuss. @david what do you see in the numbers? @alex where do the hooks feel stale? Keep it tight — I'll close with a plan once we have 3-4 inputs.`;
+            void startSystemConversation({
+              projectId: proj.id,
+              trigger: 'META_DROP_CRITICAL',
+              topic,
+              openingMessage: opening,
+              maxChainLength: 3,
+            }).catch(() => { /* best-effort */ });
           }
         }
       }
