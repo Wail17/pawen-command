@@ -5,6 +5,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
+import { isNewScrapingStackOn, fetchViaNewStack } from './providers/clientDispatch';
 
 export interface QuoraFetchOptions {
   maxThreads?: number;    // default 20
@@ -15,6 +16,9 @@ export async function fetchQuora(
   language: string,
   options: QuoraFetchOptions = {},
 ): Promise<RawSourceData> {
+  if (isNewScrapingStackOn()) {
+    return fetchViaNewStack('quora', plan, language);
+  }
   const start = Date.now();
   const maxThreads = options.maxThreads ?? 20;
   const langMod = languageModifier(language);

@@ -1,14 +1,25 @@
 // ============================================================
-// PAWEN — Meta Ad Library Scraper
-// Searches Meta Ad Library via Tavily for competitor ad copy.
-// Returns structured ad data for injection into creative gates.
+// PAWEN — /api/meta-ads   (Phase U.4.4 — rewritten)
+//
+// Uses Meta Graph /ads_archive directly (MetaGraphAdapter) when
+// META_ACCESS_TOKEN is set AND (USE_NEW_SCRAPING_STACK=1 OR the
+// Tavily key is missing). Otherwise falls back to the legacy
+// Tavily-wrapper shim for backward compatibility.
+//
+// Response keeps the legacy `{ ads: [...] }` shape to avoid breaking
+// any existing caller. New consumers may read `raw: [...]` for the
+// full structured MetaAdResult shape.
 // ============================================================
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/session';
+import { metaGraphAdapter } from '@/lib/sources/providers/metaGraphAdapter';
+import { isNewScrapingStackEnabled } from '@/lib/learning/autonomousMode';
 
 export const maxDuration = 60;
 
-interface MetaAdResult {
+// Legacy shape preserved for back-compat.
+interface LegacyAdShape {
   advertiser: string;
   headline: string;
   body: string;
@@ -18,120 +29,111 @@ interface MetaAdResult {
   startDate?: string;
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
+  const session = requireSession(req);
+  if (session instanceof Response) return session;
+
   try {
     const { query, niche, country, limit } = await req.json();
-
     if (!query) {
-      return NextResponse.json({ error: 'query is required' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'query is required' }, { status: 400 });
     }
 
-    const TAVILY_KEY = process.env.TAVILY_API_KEY;
-    if (!TAVILY_KEY) {
-      return NextResponse.json({ error: 'TAVILY_API_KEY not configured' }, { status: 500 });
+    const metaToken = process.env.META_ACCESS_TOKEN;
+    const tavilyKey = process.env.TAVILY_API_KEY;
+
+    // Prefer Meta Graph when the token is present. Fall back to Tavily
+    // ONLY when the token is missing AND legacy mode is explicitly in use.
+    const preferGraph = !!metaToken && (isNewScrapingStackEnabled() || !tavilyKey);
+
+    if (preferGraph) {
+      const countries = country ? [String(country).toUpperCase().slice(0, 2)] : undefined;
+      const rows = await metaGraphAdapter.fetch({
+        searchTerms: [query, niche].filter(Boolean).join(' ').slice(0, 200),
+        countries,
+        activeStatus: 'ACTIVE',
+        limit: Math.min(Number(limit) || 100, 500),
+      }).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { __err: msg } as unknown;
+      });
+
+      if (rows && typeof rows === 'object' && '__err' in rows) {
+        return NextResponse.json(
+          { ok: false, ads: [], error: (rows as { __err: string }).__err, source: 'meta-graph' },
+          { status: 502 },
+        );
+      }
+
+      const raw = rows as Awaited<ReturnType<typeof metaGraphAdapter.fetch>>;
+      const ads: LegacyAdShape[] = raw.map(r => ({
+        advertiser: r.pageName,
+        headline: r.adCreativeLinkTitles[0] ?? r.adCreativeBodies[0]?.slice(0, 120) ?? '',
+        body: r.adCreativeBodies[0] ?? '',
+        cta: r.adCreativeLinkCaptions?.[0] ?? 'Learn More',
+        platform: (r.publisherPlatforms ?? ['facebook'])[0] ?? 'facebook',
+        url: r.snapshotUrl ?? '',
+        startDate: r.adDeliveryStartTime,
+      }));
+      return NextResponse.json({
+        ok: true,
+        ads,
+        raw,
+        query,
+        totalFound: ads.length,
+        source: 'meta-graph',
+      });
     }
 
-    // Search Meta Ad Library via Tavily
+    // --- Legacy Tavily fallback (kept for back-compat when META_ACCESS_TOKEN missing) ---
+    if (!tavilyKey) {
+      return NextResponse.json({ ok: false, ads: [], error: 'Neither META_ACCESS_TOKEN nor TAVILY_API_KEY is configured', source: 'none' }, { status: 500 });
+    }
+
     const searchQueries = [
       `site:facebook.com/ads/library ${query} ${niche || ''}`,
       `Meta ads "${query}" ${niche || ''} ad copy example`,
-      `Facebook ad library ${niche || ''} ${query} active ads`,
     ];
-
-    const allResults: MetaAdResult[] = [];
-
+    const all: LegacyAdShape[] = [];
     for (const sq of searchQueries.slice(0, 2)) {
       try {
-        const response = await fetch('https://api.tavily.com/search', {
+        const r = await fetch('https://api.tavily.com/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            api_key: TAVILY_KEY,
+            api_key: tavilyKey,
             query: sq,
-            max_results: limit || 10,
+            max_results: Number(limit) || 10,
             include_raw_content: true,
             search_depth: 'advanced',
           }),
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          const results = data.results || [];
-
-          for (const r of results) {
-            const ad = parseAdFromResult(r, query);
-            if (ad) allResults.push(ad);
-          }
+        if (!r.ok) continue;
+        const data = await r.json() as { results?: Array<{ url?: string; title?: string; content?: string; raw_content?: string }> };
+        for (const row of data.results ?? []) {
+          const content = row.raw_content || row.content || '';
+          if (content.length < 50) continue;
+          all.push({
+            advertiser: row.title?.split('—')[0]?.slice(0, 40) ?? 'Unknown',
+            headline: row.title ?? '',
+            body: content.slice(0, 400),
+            cta: 'Learn More',
+            platform: 'facebook',
+            url: row.url ?? '',
+          });
         }
-      } catch {
-        // Continue with next query
-      }
+      } catch { /* continue */ }
     }
-
-    // Deduplicate by headline
-    const seen = new Set<string>();
-    const unique = allResults.filter(ad => {
-      const key = ad.headline.toLowerCase().slice(0, 50);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
     return NextResponse.json({
-      ads: unique.slice(0, limit || 20),
+      ok: true,
+      ads: all.slice(0, Number(limit) || 20),
       query,
-      totalFound: unique.length,
+      totalFound: all.length,
+      source: 'tavily-fallback',
+      note: 'Using Tavily fallback. Add META_ACCESS_TOKEN and enable USE_NEW_SCRAPING_STACK for higher-quality structured ads.',
     });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 },
-    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ ok: false, ads: [], error: msg }, { status: 500 });
   }
-}
-
-function parseAdFromResult(
-  result: { title?: string; content?: string; raw_content?: string; url?: string },
-  query: string,
-): MetaAdResult | null {
-  const content = result.raw_content || result.content || '';
-  if (content.length < 50) return null;
-
-  // Extract ad components from the content
-  const lines = content.split('\n').filter((l: string) => l.trim().length > 10);
-
-  // Try to extract structured ad data
-  let headline = result.title || '';
-  let body = '';
-  let advertiser = '';
-  let cta = 'Learn More';
-
-  // Look for ad-like patterns
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.length > 20 && trimmed.length < 150 && !headline) {
-      headline = trimmed;
-    } else if (trimmed.length > 100 && !body) {
-      body = trimmed.slice(0, 500);
-    }
-
-    // CTA detection
-    const ctaMatch = trimmed.match(/(?:Shop Now|Learn More|Sign Up|Get Started|Buy Now|Order Now|Subscribe|Download|Get Offer|Claim|Try Free)/i);
-    if (ctaMatch) cta = ctaMatch[0];
-
-    // Advertiser detection
-    const adMatch = trimmed.match(/(?:by|from|©)\s+(.{3,40})/i);
-    if (adMatch && !advertiser) advertiser = adMatch[1].trim();
-  }
-
-  if (!headline && !body) return null;
-
-  return {
-    advertiser: advertiser || 'Unknown',
-    headline: headline.slice(0, 200),
-    body: body.slice(0, 500),
-    cta,
-    platform: 'facebook',
-    url: result.url || '',
-  };
 }

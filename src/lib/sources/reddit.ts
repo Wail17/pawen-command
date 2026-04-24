@@ -17,6 +17,7 @@
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { toRawItem } from './common';
 import { apiUrl } from '../util/apiBaseUrl';
+import { isNewScrapingStackOn, fetchViaNewStack } from './providers/clientDispatch';
 
 export type RedditDepth = 'standard' | 'deep' | 'maximum';
 
@@ -228,6 +229,11 @@ export async function fetchReddit(
   _language: string,
   options: RedditFetchOptions = {},
 ): Promise<RawSourceData> {
+  // Phase U.4: short-circuit to the new provider stack when flag is on.
+  if (isNewScrapingStackOn()) {
+    return fetchViaNewStack('reddit', plan, _language);
+  }
+
   const start = Date.now();
 
   const preset = REDDIT_DEPTH_PRESETS[options.depth ?? 'deep'];

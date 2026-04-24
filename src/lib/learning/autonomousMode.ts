@@ -58,6 +58,16 @@ export function getConstitutionRefreshEvery(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 10;
 }
 
+// --- Phase U.4 flag ---
+
+// Server-only. Master toggle for the rebuilt scraping stack.
+// Default OFF → legacy Tavily/Apify code paths untouched.
+// ON → source fetchers route through src/lib/sources/providers/*.
+export function isNewScrapingStackEnabled(): boolean {
+  return boolish(process.env.USE_NEW_SCRAPING_STACK)
+    || boolish(process.env.NEXT_PUBLIC_USE_NEW_SCRAPING_STACK);
+}
+
 // --- Phase V flags ---
 
 // Client-readable. Master switch for the chat room.

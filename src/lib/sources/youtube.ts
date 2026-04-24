@@ -16,6 +16,7 @@
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
 import { apiUrl } from '../util/apiBaseUrl';
+import { isNewScrapingStackOn, fetchViaNewStack } from './providers/clientDispatch';
 
 export interface YoutubeFetchOptions {
   maxVideos?: number;     // default 16
@@ -119,6 +120,9 @@ export async function fetchYoutube(
   language: string,
   options: YoutubeFetchOptions = {},
 ): Promise<RawSourceData> {
+  if (isNewScrapingStackOn()) {
+    return fetchViaNewStack('youtube', plan, language);
+  }
   const start = Date.now();
   const maxVideos = options.maxVideos ?? 16;
   const queries = plan.video_queries.slice(0, 8);

@@ -16,6 +16,7 @@
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
 import { apiUrl } from '../util/apiBaseUrl';
+import { isNewScrapingStackOn, fetchViaNewStack } from './providers/clientDispatch';
 
 export interface TikTokFetchOptions {
   maxVideos?: number;        // default 25
@@ -107,6 +108,9 @@ export async function fetchTikTok(
   language: string,
   options: TikTokFetchOptions = {},
 ): Promise<RawSourceData> {
+  if (isNewScrapingStackOn()) {
+    return fetchViaNewStack('tiktok', plan, language);
+  }
   const start = Date.now();
   const maxVideos = options.maxVideos ?? 25;
   const maxCommentsPerVideo = options.maxCommentsPerVideo ?? 40;

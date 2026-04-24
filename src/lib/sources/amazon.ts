@@ -14,6 +14,7 @@
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem } from './common';
 import { apiUrl } from '../util/apiBaseUrl';
+import { isNewScrapingStackOn, fetchViaNewStack } from './providers/clientDispatch';
 
 export interface AmazonFetchOptions {
   maxProducts?: number;     // default 8
@@ -105,6 +106,9 @@ export async function fetchAmazon(
   plan: SourceDiscoveryPlan['amazon'],
   options: AmazonFetchOptions = {},
 ): Promise<RawSourceData> {
+  if (isNewScrapingStackOn()) {
+    return fetchViaNewStack('amazon', plan, 'en-US');
+  }
   const start = Date.now();
   const maxProducts = options.maxProducts ?? 8;
   const maxReviewsPerProduct = options.maxReviewsPerProduct ?? 50;

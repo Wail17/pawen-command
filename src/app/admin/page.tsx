@@ -1060,6 +1060,12 @@ function AutonomousTab() {
           >
             Agent constitutions (U.2) →
           </Link>
+          <Link
+            href="/admin/scraping-health"
+            className="inline-block px-4 py-2 border border-accent-orange text-accent-orange text-sm font-semibold rounded-lg hover:bg-accent-orange/10"
+          >
+            Scraping health (U.4) →
+          </Link>
         </div>
       </div>
     </div>

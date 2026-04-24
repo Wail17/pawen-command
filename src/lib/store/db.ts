@@ -51,12 +51,13 @@ interface PawenDB extends DBSchema {
     key: string;
     value: TrainingSource;
   };
-  // === v3: Training Chunks (full text) ===
+  // === v3: Training Chunks (full text) — v10 adds embedding + similarityHash indexes ===
   trainingChunks: {
     key: string;
     value: TrainingChunk;
     indexes: {
       'by-source': string;
+      'by-similarity-hash': string;
     };
   };
   // === v2: Agent Memory ===
@@ -148,7 +149,7 @@ interface PawenDB extends DBSchema {
 }
 
 const DB_NAME = 'pawen-command-center';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 let dbInstance: IDBPDatabase<PawenDB> | null = null;
 
@@ -156,7 +157,7 @@ async function getDB(): Promise<IDBPDatabase<PawenDB>> {
   if (dbInstance) return dbInstance;
 
   dbInstance = await openDB<PawenDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, oldVersion, _newVersion, tx) {
       // === v1 stores ===
       if (oldVersion < 1) {
         const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
@@ -237,6 +238,17 @@ async function getDB(): Promise<IDBPDatabase<PawenDB>> {
 
         const msgStore = db.createObjectStore('conversationMessages', { keyPath: 'id' });
         msgStore.createIndex('by-conversation', 'conversationId');
+      }
+
+      // === v10 alter: Phase U.4 — TrainingChunk similarity hash index ===
+      // We add an index on the existing `trainingChunks` store. Existing
+      // rows won't have `similarityHash` populated yet — the backfill job
+      // sets it lazily on access (see scoreChunk + embeddings.ts).
+      if (oldVersion < 10 && db.objectStoreNames.contains('trainingChunks')) {
+        const store = tx.objectStore('trainingChunks');
+        if (!store.indexNames.contains('by-similarity-hash')) {
+          store.createIndex('by-similarity-hash', 'similarityHash', { unique: false });
+        }
       }
     },
   });

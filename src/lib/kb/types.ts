@@ -77,6 +77,11 @@ export interface TrainingChunk {
   summary: string;                   // short summary for search/display
   applicableGates: string[];         // which gates this chunk is relevant to
   createdAt: string;
+  // Phase U.4 additions (IDB v10, optional on legacy rows)
+  embedding?: number[];              // serialized Float32 embedding (length = provider dim)
+  embeddingModel?: string;           // e.g. 'voyage-3-lite' | 'simhash-stub'
+  qualityScore?: number;             // 0-100 (see src/lib/sources/qualityScore.ts)
+  similarityHash?: string;           // sha-256 of normalized content, for exact-dup detection
 }
 
 // === AGENT PERSONA ===

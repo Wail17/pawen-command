@@ -13,6 +13,7 @@
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { toRawItem, webSearch, scrapeUrl } from './common';
 import { apiUrl } from '../util/apiBaseUrl';
+import { isNewScrapingStackOn, fetchViaNewStack } from './providers/clientDispatch';
 
 export interface ShopifyFetchOptions {
   maxProducts?: number;      // default 20
@@ -72,6 +73,9 @@ export async function fetchShopify(
   language: string,
   options: ShopifyFetchOptions = {},
 ): Promise<RawSourceData> {
+  if (isNewScrapingStackOn()) {
+    return fetchViaNewStack('shopify', plan, language);
+  }
   const start = Date.now();
   const maxProducts = options.maxProducts ?? 20;
   const items: ReturnType<typeof toRawItem>[] = [];
