@@ -130,6 +130,7 @@ export default function CompetitorIntelPage() {
           <CompetitorIntel
             targetLanguage={project.targetLanguage || 'English'}
             targetMarket={project.targetMarket || 'Global'}
+            projectSubAvatars={project.avatarRunResult?.sub_avatars ?? []}
             onInjectSubAvatar={handleInjectSubAvatar}
             onInjectClone={handleInjectClone}
           />

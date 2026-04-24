@@ -35,6 +35,16 @@ const STATUS_STYLES: Record<GateStatus, { dot: string; text: string; bg: string 
     text: 'text-success',
     bg: 'bg-bg-card border-success/30 hover:bg-bg-card-hover cursor-pointer',
   },
+  pending_decisions: {
+    dot: 'bg-warning',
+    text: 'text-warning',
+    bg: 'bg-bg-card border-warning hover:bg-bg-card-hover cursor-pointer',
+  },
+  skipped: {
+    dot: 'bg-text-muted',
+    text: 'text-text-muted',
+    bg: 'bg-bg-card opacity-60 hover:bg-bg-card-hover cursor-pointer',
+  },
 };
 
 const STATUS_ICONS: Record<GateStatus, string> = {
@@ -43,6 +53,8 @@ const STATUS_ICONS: Record<GateStatus, string> = {
   in_progress: '🔄',
   pending_review: '⏳',
   approved: '✅',
+  pending_decisions: '⏳',
+  skipped: '⤼',
 };
 
 export default function Pipeline({ project, activeGate }: PipelineProps) {
@@ -130,6 +142,12 @@ export default function Pipeline({ project, activeGate }: PipelineProps) {
           className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-teal"
         >
           🧬 Brand DNA
+        </Link>
+        <Link
+          href={`/project/${project.id}/gallery`}
+          className="flex items-center gap-2 text-text-secondary text-sm hover:text-accent-orange"
+        >
+          🖼️ Image Gallery
         </Link>
         <Link
           href={`/project/${project.id}/templates`}

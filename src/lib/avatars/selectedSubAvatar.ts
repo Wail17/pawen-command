@@ -14,19 +14,27 @@
 // every gate was rebuilding sub-avatars from scratch.
 // ============================================================
 
-import { Project } from '../types';
+import { Project, FunnelType, AWARENESS_TO_FUNNEL } from '../types';
 import { AvatarRunResult, SubAvatarV2 } from './types';
 
 /**
  * Resolve the sub-avatar that downstream gates should focus on.
  *
- * @param project           Current project (source of selectedSubAvatarId)
- * @param previousOutputs   Map from runGate.ts — we pull gate1 out of here
- * @returns                 The selected sub-avatar, or null if Gate 1 hasn't run yet
+ * Resolution order:
+ *   1. subAvatarIdOverride (batch-run per-SA execution)
+ *   2. project.selectedSubAvatarId (explicit human pick)
+ *   3. sub_avatars[].recommended_for_test === true (Marcus's auto-pick)
+ *   4. sub_avatars[0] (absolute fallback)
+ *   5. null (no Gate 1 result at all)
+ *
+ * @param project                Current project
+ * @param previousOutputs        Map from runGate.ts — we pull gate1 out of here
+ * @param subAvatarIdOverride    Optional — in batch mode, the specific SA to focus on
  */
 export function getSelectedSubAvatar(
   project: Project,
   previousOutputs?: Record<string, unknown>,
+  subAvatarIdOverride?: string,
 ): SubAvatarV2 | null {
   // Pull Gate 1 output from either previousOutputs (runGate path) or
   // project.avatarRunResult (direct access path).
@@ -40,6 +48,12 @@ export function getSelectedSubAvatar(
 
   const subAvatars = gate1Data.sub_avatars;
 
+  // 0. Batch-run override
+  if (subAvatarIdOverride) {
+    const overridden = subAvatars.find(sa => sa.id === subAvatarIdOverride);
+    if (overridden) return overridden;
+  }
+
   // 1. Explicit human pick
   if (project.selectedSubAvatarId) {
     const picked = subAvatars.find(sa => sa.id === project.selectedSubAvatarId);
@@ -52,6 +66,29 @@ export function getSelectedSubAvatar(
 
   // 3. First in the list
   return subAvatars[0];
+}
+
+/**
+ * Derive the funnel (Schwartz awareness level) this sub-avatar should target.
+ *
+ * Priority:
+ *   1. funnelOverride (batch run: caller-specified per-SA funnel)
+ *   2. sa.recommended_awareness_level (Marcus's per-SA call from Gate 1 verbatims)
+ *   3. project.selectedFunnel (global manual override)
+ *   4. 'problem_aware' (safe default — most common starting point)
+ */
+export function resolveFunnelForSubAvatar(
+  sa: SubAvatarV2 | null,
+  project: Project,
+  funnelOverride?: FunnelType,
+): FunnelType {
+  if (funnelOverride) return funnelOverride;
+  if (sa?.recommended_awareness_level) {
+    const mapped = AWARENESS_TO_FUNNEL[sa.recommended_awareness_level];
+    if (mapped) return mapped;
+  }
+  if (project.selectedFunnel) return project.selectedFunnel;
+  return 'problem_aware';
 }
 
 /**

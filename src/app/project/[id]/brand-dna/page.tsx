@@ -6,6 +6,7 @@ import { Project, BrandDNA } from '@/lib/types';
 import { getProject, saveProject, getGateOutput } from '@/lib/store/db';
 import { extractJSON } from '@/lib/util/extractJson';
 import Pipeline from '@/components/ui/Pipeline';
+import { notifyGateStart, notifyGateEnd, notifyGateError, extractPreview } from '@/lib/notifications/discord';
 
 export default function BrandDNAPage() {
   const params = useParams();
@@ -32,6 +33,8 @@ export default function BrandDNAPage() {
   const handleCompile = useCallback(async () => {
     if (!project) return;
     setCompiling(true);
+    const __bdnaStart = Date.now();
+    notifyGateStart('brand-dna', project.id, project.name);
 
     // Get downstream gate outputs for compilation
     const g2 = await getGateOutput(projectId, 'gate2');
@@ -305,9 +308,25 @@ IMPORTANT: Use REAL product name, REAL price, and REAL review quotes in the Bran
       const updated = { ...project, brandDNA: compiled };
       await saveProject(updated);
       setProject(updated);
+
+      notifyGateEnd({
+        gateId: 'brand-dna',
+        projectId: project.id,
+        projectName: project.name,
+        durationMs: Date.now() - __bdnaStart,
+        preview: extractPreview('brand-dna', compiled as unknown as Record<string, unknown>),
+        status: 'pending_decisions',
+      });
     } catch (error) {
       console.error('Compilation error:', error);
       alert('Compilation failed. Check console.');
+      notifyGateError({
+        gateId: 'brand-dna',
+        projectId: project.id,
+        projectName: project.name,
+        durationMs: Date.now() - __bdnaStart,
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       setCompiling(false);
     }

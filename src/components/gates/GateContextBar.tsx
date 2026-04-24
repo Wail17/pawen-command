@@ -95,29 +95,87 @@ export default function GateContextBar({ project, onProjectChange }: GateContext
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-text-muted uppercase shrink-0">
-            Sub-avatar
-          </label>
-          <select
-            value={selectedSA?.id ?? ''}
-            onChange={(e) => handleSubAvatarChange(e.target.value)}
-            className="flex-1 px-3 py-1.5 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent-orange"
-          >
-            {subAvatars.map((sa) => (
-              <option key={sa.id} value={sa.id}>
-                {sa.nickname || sa.name}
-                {sa.recommended_for_test ? ' ★' : ''}
-                {` (U${sa.urgency_score} × S${sa.scope_score})`}
-              </option>
-            ))}
-          </select>
-          {selectedSA && (
-            <span className="text-[10px] text-text-muted hidden md:inline max-w-[200px] truncate">
-              {selectedSA.description?.slice(0, 80)}
-            </span>
+        <>
+          {/* Matrix Mode tabs — one pill per batch SA, with live progress.
+              Only shown when a batch is active. Clicking a tab switches the
+              focus so the gate page below re-renders against that SA. */}
+          {(project.batchSubAvatarIds?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-accent-orange uppercase shrink-0">
+                  Matrix tabs
+                </label>
+                <span className="text-[10px] text-text-muted">
+                  Click a sub-avatar to view its output for this gate.
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(project.batchSubAvatarIds ?? []).map((saId) => {
+                  const sa = subAvatars.find(s => s.id === saId);
+                  if (!sa) return null;
+                  const st = project.batchRunStatus?.[saId];
+                  const isActive = selectedSA?.id === saId;
+                  const done = st?.completedGates.length ?? 0;
+                  const pct = Math.round((done / 8) * 100);
+                  const stateColor =
+                    st?.status === 'completed' ? 'border-success/50 text-success'
+                    : st?.status === 'failed' ? 'border-red-500/50 text-red-300'
+                    : st?.status === 'running' ? 'border-accent-orange/60 text-accent-orange'
+                    : 'border-border text-text-muted';
+                  return (
+                    <button
+                      key={saId}
+                      type="button"
+                      onClick={() => handleSubAvatarChange(saId)}
+                      title={st ? `${st.status} · ${done}/8 gates` : sa.description?.slice(0, 120)}
+                      className={`px-2.5 py-1 rounded-md border text-xs font-semibold transition ${
+                        isActive
+                          ? 'bg-accent-orange/15 border-accent-orange text-accent-orange ring-1 ring-accent-orange/40'
+                          : `bg-bg-input ${stateColor} hover:text-text-primary`
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {sa.recommended_for_test && <span className="text-accent-teal text-[10px]">★</span>}
+                        <span className="truncate max-w-[140px]">{sa.nickname || sa.name}</span>
+                        {st && (
+                          <span className="text-[10px] opacity-80">
+                            {st.status === 'running' && st.currentGate
+                              ? `▶${st.currentGate.replace('gate', '')}`
+                              : `${pct}%`}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
-        </div>
+
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-semibold text-text-muted uppercase shrink-0">
+              Sub-avatar
+            </label>
+            <select
+              value={selectedSA?.id ?? ''}
+              onChange={(e) => handleSubAvatarChange(e.target.value)}
+              className="flex-1 px-3 py-1.5 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent-orange"
+            >
+              {subAvatars.map((sa) => (
+                <option key={sa.id} value={sa.id}>
+                  {sa.nickname || sa.name}
+                  {sa.recommended_for_test ? ' ★' : ''}
+                  {` (U${sa.urgency_score} × S${sa.scope_score})`}
+                </option>
+              ))}
+            </select>
+            {selectedSA && (
+              <span className="text-[10px] text-text-muted hidden md:inline max-w-[200px] truncate">
+                {selectedSA.description?.slice(0, 80)}
+              </span>
+            )}
+          </div>
+        </>
       )}
 
       {/* Funnel selector */}

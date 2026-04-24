@@ -8,10 +8,22 @@
 import { SubAgentDef, SubAgentResult } from '../gates/types';
 import { Project, GenerationLogEntry } from '../types';
 import { MODEL_REGISTRY } from '../ai/providers';
-import { getKnowledgeForGate, getTrainingChunksForGate } from '../store/db';
+import { getKnowledgeForGate, getTrainingChunksForGate, getPersonaDistillation, getAgentConstitution } from '../store/db';
 import { getPersonaForSubAgent, buildPersonaPrompt, buildKnowledgePrompt, buildMemoryPrompt, buildTrainingPrompt } from './personas';
 import { getRelevantMemories } from './memory';
 import { buildGoldOutputsPrompt } from '../learning/inject';
+import { isAutonomousModeEnabled } from '../learning/autonomousMode';
+import { AgentId, PersonaDistillation, AgentConstitution } from '../kb/types';
+import { runScout } from './scout';
+import { getScoutDailyCap, getScoutPerGateCap, getScoutMaxJobCostUsd } from '../learning/autonomousMode';
+
+// Per-agent baked-in expertise (Phase U.1) and self-written rules (Phase U.2).
+// Pre-loaded once per gate run and passed through to each sub-agent call.
+type AgentAutonomousContext = {
+  distillations: Map<AgentId, PersonaDistillation>;
+  constitutions: Map<AgentId, AgentConstitution>;
+  enabled: boolean;
+};
 
 // Model mapping for sub-agents
 const SUB_AGENT_MODELS = {
@@ -19,30 +31,63 @@ const SUB_AGENT_MODELS = {
   sonnet: MODEL_REGISTRY['sonnet-4-6'],
 } as const;
 
+// Gate-scoped KB cache: knowledge + training chunks are identical for every
+// sub-agent in a gate run, so we fetch them once in runSubAgents and pass
+// through rather than hitting IndexedDB N times per wave.
+type GateKnowledge = Awaited<ReturnType<typeof getKnowledgeForGate>>;
+type GateTrainingChunks = Awaited<ReturnType<typeof getTrainingChunksForGate>>;
+
 async function callSubAgent(
   subAgent: SubAgentDef,
   project: Project,
   previousOutputs: Record<string, unknown>,
   peerOutputs: Record<string, string>,
   gateId: string,
+  knowledge: GateKnowledge,
+  trainingChunks: GateTrainingChunks,
+  autonomousCtx: AgentAutonomousContext,
 ): Promise<SubAgentResult> {
   const modelConfig = SUB_AGENT_MODELS[subAgent.model];
   const start = Date.now();
 
-  // Get persona, KB knowledge, training chunks, and memories for this sub-agent
+  // Persona + memories are still per-agent (they're keyed on persona.id,
+  // not gateId). Only the gate-scoped KB reads are now cached upstream.
   const persona = getPersonaForSubAgent(subAgent.id);
-  const knowledge = await getKnowledgeForGate(gateId);
-  const trainingChunks = await getTrainingChunksForGate(gateId);
   const memories = persona ? await getRelevantMemories(persona.id, 5) : [];
+
+  // Phase U: swap runtime-RAG training chunks for the persona's
+  // distilled expertise (baked into the persona prompt) when autonomous
+  // mode is ON AND a distillation exists for this persona.
+  const distillation = persona && autonomousCtx.enabled
+    ? autonomousCtx.distillations.get(persona.id) ?? null
+    : null;
+  const constitution = persona && autonomousCtx.enabled
+    ? autonomousCtx.constitutions.get(persona.id) ?? null
+    : null;
+  const useBakedInExpertise = !!(autonomousCtx.enabled && distillation);
 
   // Build enriched system prompt: persona + training + knowledge + experience + task
   let enrichedSystemPrompt = '';
 
   if (persona) {
-    enrichedSystemPrompt += buildPersonaPrompt(persona) + '\n\n';
+    enrichedSystemPrompt += buildPersonaPrompt(persona, { distillation, constitution }) + '\n\n';
   }
 
-  if (trainingChunks.length > 0) {
+  // Phase U.3c — sub-agents opt into the Scout tool when autonomous mode
+  // is on. A short protocol section tells the model it may request more
+  // intel by emitting a single line in its output:
+  //   SCRAPE_REQUEST: <one-sentence intent>
+  // The runSubAgents post-process scans for this marker and dispatches
+  // Scout. Results are appended to the scoutLedger (see src/lib/store/db).
+  if (autonomousCtx.enabled) {
+    enrichedSystemPrompt += `=== SCOUT PROTOCOL ===
+If — and only if — you need more intel (VOC quotes, competitor ads, recent reviews, etc.) than the context already provides to produce a high-quality output, you may emit EXACTLY ONE line in your response formatted:
+  SCRAPE_REQUEST: <one short sentence describing what you need>
+Use this sparingly (hard cap: ${getScoutPerGateCap()} Scout calls per gate run, ${getScoutDailyCap()} per project per day). Do NOT request Scout for anything already in the context above.
+=== END SCOUT PROTOCOL ===\n\n`;
+  }
+
+  if (!useBakedInExpertise && trainingChunks.length > 0) {
     enrichedSystemPrompt += buildTrainingPrompt(
       trainingChunks.map(c => ({ sourceName: c.sourceName, content: c.content, summary: c.summary }))
     ) + '\n\n';
@@ -180,33 +225,101 @@ RULES: Use mechanism name EXACTLY. Never use forbidden words. Only approved cust
 
   const userMsg = subAgent.userMessage(project, previousOutputs, peerOutputs) + productPin;
 
-  const response = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: modelConfig.model,
-      systemPrompt: enrichedSystemPrompt,
-      userMessage: userMsg,
-      temperature: subAgent.temperature ?? 0.7,
-      maxTokens: subAgent.maxTokens ?? modelConfig.maxTokens,
-      cacheControl: true,
-      stream: false,
-    }),
-  });
+  // Streamed call helper. With 32k-token Opus calls under tier-1 Anthropic
+  // throughput (8k OTPM), a buffered response can exceed the server's 295s
+  // AbortSignal ceiling. Streaming keeps the connection alive as tokens
+  // arrive and captures partial output if the upstream call hits a hiccup.
+  async function streamCall(mt: number) {
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: modelConfig.model,
+        systemPrompt: enrichedSystemPrompt,
+        userMessage: userMsg,
+        temperature: subAgent.temperature ?? 0.7,
+        maxTokens: mt,
+        cacheControl: true,
+        stream: true,
+      }),
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Sub-agent "${subAgent.name}" failed: ${error.message || 'API error'}`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'API error');
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('no response body for streaming');
+
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    const tokensUsed = { input: 0, output: 0 };
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+            fullContent += parsed.delta.text;
+          }
+          if (parsed.type === 'message_start' && parsed.message?.usage) {
+            tokensUsed.input = parsed.message.usage.input_tokens ?? 0;
+          }
+          if (parsed.type === 'message_delta' && parsed.usage) {
+            tokensUsed.output = parsed.usage.output_tokens ?? 0;
+          }
+        } catch { /* skip malformed SSE frames */ }
+      }
+    }
+
+    return { fullContent, tokensUsed };
   }
 
-  const result = await response.json();
+  // Fallback cascade: try at full maxTokens first (best quality). On
+  // timeout/abort/overload, retry at half (quality drop but still completes
+  // under the 295s ceiling on Anthropic tier-1). Users on tier-2+ will almost
+  // never hit the fallback; users on tier-1 get graceful degradation instead
+  // of a hard crash.
+  const primaryMax = subAgent.maxTokens ?? modelConfig.maxTokens;
+  const fallbackMax = Math.max(4000, Math.floor(primaryMax / 2));
+  let out: { fullContent: string; tokensUsed: { input: number; output: number } };
+
+  try {
+    out = await streamCall(primaryMax);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Retry on ANY primary failure (network drop, timeout, rate limit, abort,
+    // 5xx) — the fallback budget is smaller so it finishes faster under the
+    // 295s ceiling. Only skip the retry when primary already == fallback.
+    if (primaryMax <= fallbackMax) {
+      throw new Error(`Sub-agent "${subAgent.name}" failed: ${msg}`);
+    }
+    try {
+      out = await streamCall(fallbackMax);
+    } catch (err2) {
+      const msg2 = err2 instanceof Error ? err2.message : String(err2);
+      throw new Error(`Sub-agent "${subAgent.name}" failed (primary ${primaryMax}tok: ${msg} | fallback ${fallbackMax}tok: ${msg2})`);
+    }
+  }
 
   return {
     id: subAgent.id,
     name: subAgent.name,
     model: modelConfig.model,
-    output: result.content,
-    tokensUsed: result.tokensUsed,
+    output: out.fullContent,
+    tokensUsed: out.tokensUsed,
     durationMs: Date.now() - start,
   };
 }
@@ -279,32 +392,95 @@ export async function runSubAgents(params: RunSubAgentsParams): Promise<RunSubAg
   const log: GenerationLogEntry[] = [];
   const totalTokens = { input: 0, output: 0 };
 
+  // Fetch gate-scoped KB ONCE per gate run instead of N times per wave.
+  // Previously each sub-agent hit IndexedDB to load the same knowledge +
+  // training chunks; a 6-agent gate did 12 redundant reads per run.
+  const autonomous = isAutonomousModeEnabled();
+  const [knowledge, trainingChunks] = await Promise.all([
+    getKnowledgeForGate(gateId),
+    // Skip the training-chunk pull in autonomous mode; each persona's
+    // distillation already embeds this content.
+    autonomous ? Promise.resolve([] as Awaited<ReturnType<typeof getTrainingChunksForGate>>) : getTrainingChunksForGate(gateId),
+  ]);
+
+  // Preload distillations + constitutions for every persona in the
+  // sub-agent list so we don't hit IndexedDB per sub-agent call.
+  const autonomousCtx: AgentAutonomousContext = {
+    distillations: new Map(),
+    constitutions: new Map(),
+    enabled: autonomous,
+  };
+  if (autonomous) {
+    const uniqueAgentIds = new Set<AgentId>();
+    for (const sa of subAgents) {
+      const p = getPersonaForSubAgent(sa.id);
+      if (p) uniqueAgentIds.add(p.id);
+    }
+    await Promise.all(
+      [...uniqueAgentIds].map(async (aid) => {
+        const [d, c] = await Promise.all([getPersonaDistillation(aid), getAgentConstitution(aid)]);
+        if (d) autonomousCtx.distillations.set(aid, d);
+        if (c) autonomousCtx.constitutions.set(aid, c);
+      }),
+    );
+  }
+
   const waves = buildExecutionWaves(subAgents);
 
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
     const wave = waves[waveIdx];
 
-    const wavePromises = wave.map(async (agent) => {
+    // Sub-agents within a wave run SEQUENTIALLY, not in parallel. Reason:
+    // G2 wave 2 fires desire-driller (opus 32k) + language-miner (opus 24k)
+    // simultaneously = 56k output tokens requested concurrently. On Anthropic
+    // tier-1 this queues/slows the calls until /api/generate's 295s AbortSignal
+    // fires, then retries 4× → ~1180s total hang → gate fails. Serializing
+    // within the wave keeps at most 1 Opus call in flight at a time. Slower
+    // (wave duration = sum instead of max) but bulletproof under rate limits.
+    const waveResults: SubAgentResult[] = [];
+    for (const agent of wave) {
       onSubAgentStart?.(agent.id, agent.name);
 
       try {
-        const result = await callSubAgent(agent, project, previousOutputs, outputs, gateId);
-        return result;
+        const result = await callSubAgent(agent, project, previousOutputs, outputs, gateId, knowledge, trainingChunks, autonomousCtx);
+
+        // Phase U.3c — detect SCRAPE_REQUEST marker in sub-agent output and
+        // dispatch Scout. Fire-and-forget; results are persisted to the
+        // scoutLedger and become visible in admin + future gate runs. We
+        // do NOT rewrite the current sub-agent output — Scout's role is to
+        // enrich the shared signal, not to mutate the active wave.
+        if (autonomousCtx.enabled) {
+          const match = /^\s*SCRAPE_REQUEST\s*:\s*(.+)$/m.exec(result.output);
+          if (match) {
+            const intent = match[1].trim().slice(0, 300);
+            const persona = getPersonaForSubAgent(agent.id);
+            const agentId: AgentId = persona?.id ?? 'lea';
+            const gateRunKey = `${project.id}:${gateId}:${Date.now() - (Date.now() % 60000)}`;
+            void runScout({
+              intent,
+              agentId,
+              project,
+              gateRunKey,
+              perGateCap: getScoutPerGateCap(),
+              dailyCap: getScoutDailyCap(),
+              maxCostUsd: getScoutMaxJobCostUsd(),
+            }).catch(() => { /* best-effort, never block the wave */ });
+          }
+        }
+
+        waveResults.push(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        const failResult: SubAgentResult = {
+        waveResults.push({
           id: agent.id,
           name: agent.name,
           model: SUB_AGENT_MODELS[agent.model].model,
           output: `[ERROR] ${message}`,
           tokensUsed: { input: 0, output: 0 },
           durationMs: 0,
-        };
-        return failResult;
+        });
       }
-    });
-
-    const waveResults = await Promise.all(wavePromises);
+    }
 
     for (const result of waveResults) {
       outputs[result.id] = result.output;
@@ -320,6 +496,7 @@ export async function runSubAgents(params: RunSubAgentsParams): Promise<RunSubAg
         iteration: waveIdx + 1,
         input_summary: `${persona ? persona.emoji + ' ' + persona.name : ''} → ${result.name} (wave ${waveIdx + 1})`,
         output_summary: result.output.slice(0, 200) + '...',
+        raw_output: result.output,
         tokens_used: result.tokensUsed,
       };
       log.push(logEntry);

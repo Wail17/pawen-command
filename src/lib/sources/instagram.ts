@@ -16,6 +16,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
+import { apiUrl } from '../util/apiBaseUrl';
 
 export interface InstagramFetchOptions {
   maxPosts?: number;
@@ -53,7 +54,7 @@ async function scrapeViaApify(
   payload: Record<string, unknown>,
 ): Promise<IgApifyCallResult> {
   try {
-    const res = await fetch('/api/instagram', {
+    const res = await fetch(apiUrl('/api/instagram'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

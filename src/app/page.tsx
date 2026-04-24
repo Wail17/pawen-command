@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Project } from '@/lib/types';
-import { getAllProjects, saveProject, deleteProject } from '@/lib/store/db';
+import { getAllProjects, saveProject, deleteProject, restoreProject, restoreGateOutput } from '@/lib/store/db';
 import { createProject, getProgressPercentage, getCompletedGateCount, ALL_GATES } from '@/lib/store/project-utils';
 import { fetchBootstrap } from '@/lib/store/serverMirror';
 import Link from 'next/link';
@@ -43,6 +43,10 @@ export default function Dashboard() {
   const [appUser, setAppUser] = useState<string | null>(null);
   const [isAdminSession, setIsAdminSession] = useState(false);
 
+  // --- Presence tracking ---
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+
   // Two-step login: (1) password, (2) pick-user. Password is held in
   // state *only* until the picker submit, then cleared.
   const [pendingPassword, setPendingPassword] = useState<string | null>(null);
@@ -53,18 +57,41 @@ export default function Dashboard() {
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
-    // Pull server-side mirror first so a fresh device / cleared
-    // browser can restore the user's work. Any rows on the server
-    // that aren't in IndexedDB get written back locally. Local-only
-    // rows are preserved (and will mirror up on their next save).
+    // Pull server-side mirror first. Strategy:
+    //   - Missing locally     → restore from server
+    //   - Server has MORE content (sub-avatars, approved gates) than local
+    //     (empty shell case)  → restore from server
+    //   - Otherwise           → keep local (user's in-progress changes win)
+    // Always restore gate outputs the user doesn't have locally, since a
+    // project can exist locally as an empty shell with no gateOutputs.
     try {
       const boot = await fetchBootstrap();
-      if (boot && boot.projects.length > 0) {
+      if (boot) {
         const local = await getAllProjects();
-        const localIds = new Set(local.map((p) => p.id));
+        const localById = new Map(local.map((p) => [p.id, p]));
+
+        const contentScore = (p: unknown): number => {
+          if (!p || typeof p !== 'object') return 0;
+          const proj = p as Record<string, unknown>;
+          const avatarRun = proj.avatarRunResult as { sub_avatars?: unknown[] } | undefined;
+          const subCount = avatarRun?.sub_avatars?.length ?? 0;
+          const statuses = (proj.gateStatuses ?? {}) as Record<string, string>;
+          const approved = Object.values(statuses).filter((s) => s === 'approved').length;
+          return subCount * 10 + approved * 5;
+        };
+
         for (const p of boot.projects) {
-          if (p && typeof p === 'object' && 'id' in p && !localIds.has(String(p.id))) {
-            await saveProject(p as Project);
+          if (!p || typeof p !== 'object' || !('id' in p)) continue;
+          const id = String((p as unknown as Record<string, unknown>).id);
+          const localP = localById.get(id);
+          if (!localP || contentScore(p) > contentScore(localP)) {
+            await restoreProject(p as Project);
+          }
+        }
+
+        for (const g of boot.gateOutputs) {
+          if (g && typeof g === 'object' && 'gateId' in g && 'projectId' in g) {
+            await restoreGateOutput(g);
           }
         }
       }
@@ -108,6 +135,30 @@ export default function Dashboard() {
     })();
     return () => { cancelled = true; };
   }, [loadProjects]);
+
+  // --- Presence heartbeat (every 30s when logged in) ---
+  useEffect(() => {
+    if (!appUser) return;
+    let cancelled = false;
+
+    async function heartbeat() {
+      try {
+        const res = await fetch('/api/presence', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setOnlineCount(data.online ?? 0);
+          setOnlineUsers(data.users ?? []);
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    heartbeat(); // immediate first ping
+    const interval = setInterval(heartbeat, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [appUser]);
 
   // Step 1: user enters password. We don't validate it yet — we fetch
   // the user list from the server (which is gated behind the same
@@ -279,6 +330,15 @@ export default function Dashboard() {
             <p className="text-text-muted text-xs">Multi-agent AI pipeline — Any product, any language, any niche</p>
           </div>
           <div className="flex items-center gap-3">
+            {onlineCount > 0 && (
+              <span
+                className="px-3 py-1 text-xs rounded-md border border-green-500/40 bg-green-500/10 text-green-400 cursor-default"
+                title={onlineUsers.join(', ')}
+              >
+                <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-1.5 animate-pulse" />
+                {onlineCount} online
+              </span>
+            )}
             {appUser && (
               <span className={`px-3 py-1 text-xs rounded-md border ${
                 isAdminSession
@@ -302,6 +362,9 @@ export default function Dashboard() {
                 God Panel
               </Link>
             )}
+            <Link href="/swipe-vault" className="px-4 py-2 border border-accent-teal/40 rounded-lg text-accent-teal hover:bg-accent-teal/10 text-sm">
+              🗃️ Swipe Vault
+            </Link>
             <Link href="/training" className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-sm">
               Training
             </Link>

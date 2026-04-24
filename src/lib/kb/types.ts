@@ -93,3 +93,53 @@ export interface AgentPersona {
   gates: string[];                 // which gates this agent leads
   subAgentIds: string[];           // which sub-agents this persona drives
 }
+
+// === PHASE U — PersonaDistillation (baked-in expertise, replaces runtime RAG) ===
+
+export interface PersonaDistillation {
+  agentId: AgentId;
+  distilledExpertise: string;      // markdown, ~20k chars: Frameworks / Principles / Anti-patterns / Tactical heuristics
+  chunkIds: string[];              // training chunks that fed the distillation (provenance)
+  sourceCount: number;             // number of TrainingSource docs represented
+  chunkCount: number;              // number of chunks ingested
+  inputChars: number;              // total input chars sent to Opus
+  outputChars: number;             // distilled length
+  generatedAt: string;             // ISO
+  model: string;                   // e.g. 'claude-opus-4-6'
+  tokens: number;                  // total tokens used
+  version: number;                 // monotonically increasing; v1 on first run
+}
+
+// === PHASE U — AgentConstitution (self-rewritten operating rules) ===
+
+export interface AgentConstitution {
+  agentId: AgentId;
+  constitution: string;            // first-person markdown, ≤8000 chars: Do / Don't / Watch-out rules
+  version: number;
+  generatedAt: string;
+  basedOnGates: string[];          // gateIds examined
+  basedOnOutputCount: number;      // number of GateOutput docs examined
+  metrics: {
+    avgScore: number;              // 0-100, average reviewer score over window
+    rejectionCount: number;        // number of human rejections in window
+    approvalRate: number;          // 0-1
+  };
+  previousVersion?: string;        // short diff or summary of change (optional, nullable)
+}
+
+// === PHASE U — Scout ledger (daily scraping budget tracking) ===
+
+export interface ScoutLedgerEntry {
+  id: string;                      // uuid
+  projectId: string;
+  gateId: string;                  // which gate's run requested it (or 'cron:meta-drop' / 'manual')
+  agentId: AgentId | 'cron';       // who requested
+  intent: string;                  // the natural-language intent
+  tools: string[];                 // which tools Scout picked
+  queries: string[];               // generated queries
+  addedItems: number;              // count of items appended to rawSignal/competitor/voc
+  costHint: Record<string, number>; // { tavily: 3, firecrawl: 2 } — approximate call count per tool
+  summary: string;
+  day: string;                     // 'YYYY-MM-DD' — for per-day cap indexing
+  createdAt: string;
+}

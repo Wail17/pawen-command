@@ -61,17 +61,37 @@ RESPOND IN VALID JSON matching this exact structure:
 export function buildReverseEngineerPrompt(
   targetLanguage: string,
   targetMarket: string,
+  groundingAvatar?: string,
 ): string {
+  const grounded = !!groundingAvatar && groundingAvatar.trim().length > 0;
+
+  const groundingBlock = grounded
+    ? `
+
+=== GROUNDING AVATAR (CRITICAL — READ FIRST) ===
+The user already has an existing sub-avatar they want to ADAPT this competitor's strategy to. This competitor is NOT necessarily targeting the same person — so instead of extracting a NEW avatar from the funnel, your job is to MAP the competitor's persuasion playbook ONTO the avatar below.
+
+${groundingAvatar}
+
+=== WHAT THIS CHANGES ===
+1. The \`sub_avatar\` field in your output MUST describe the USER'S existing avatar above — name, nickname, demographics, pains, desires, fears, objections, triggers, identity statements all come from that avatar. Preserve the user's voice and audience. DO NOT invent a new avatar from the competitor's pages.
+2. For \`verbatim_quotes\`: pull quotes from the competitor's funnel ONLY IF they would resonate with the user's avatar. If a quote is off-target for this avatar, skip it. Prefer quotes that echo a pain/desire/fear the user's avatar already holds.
+3. For \`copy_arsenal\`, \`mechanism\`, \`creative_strategy\`, \`funnel_structure\`: extract the competitor's actual tactics AS-IS — these are transferable patterns, not audience-specific.
+4. For \`insights\`: this is where the mapping happens. \`strengths\` = what the competitor does well that WILL work on the user's avatar. \`weaknesses\` = moves that would FLOP on the user's avatar (wrong audience tone, missing proof type they need, cultural mismatch). \`opportunities_for_your_market\` = angles the competitor missed that the user's avatar is hungry for. \`angles_to_steal\` = the specific hooks/mechanisms worth translating onto the user's avatar. \`angles_to_avoid\` = the ones that would alienate the user's avatar.
+5. Pay attention to mismatches: if the competitor targets a different age/life-stage/pain intensity, explicitly flag it in \`weaknesses\` or \`angles_to_avoid\` so the user doesn't blindly copy.
+`
+    : '';
+
   return `You are an elite direct-response marketing strategist and funnel reverse-engineer.
 
 Your job: analyze a competitor's funnel and extract EVERYTHING about their strategy — who they target, how they persuade, what psychological triggers they use, and how to beat them.
 
 THE USER'S TARGET MARKET: ${targetMarket}
 THE USER'S TARGET LANGUAGE: ${targetLanguage}
-
+${groundingBlock}
 Think like a spy breaking down the enemy's playbook. Extract:
 
-1. **SUB-AVATAR**: Who exactly is this funnel targeting? Demographics, psychographics, pain points, desires, fears, objections. What identity statements would this person make? ("I'm the kind of person who...", "I've tried everything..."). What trigger moments push them to buy? Extract any verbatim quotes or testimonials — these reveal the customer's voice.
+1. **SUB-AVATAR**: ${grounded ? `Use the GROUNDING AVATAR above as the sub_avatar — do NOT extract a new avatar from the competitor's copy. Translate their demographics/pains/desires/fears/objections/triggers/identity_statements into the sub_avatar fields verbatim, and enrich verbatim_quotes with competitor lines that would resonate with THIS avatar.` : `Who exactly is this funnel targeting? Demographics, psychographics, pain points, desires, fears, objections. What identity statements would this person make? ("I'm the kind of person who...", "I've tried everything..."). What trigger moments push them to buy? Extract any verbatim quotes or testimonials — these reveal the customer's voice.`}
 
 2. **MECHANISM**: What's their "secret sauce"? The named mechanism, the root cause they blame, the belief error they challenge. Break down their 3-step process if they have one.
 
@@ -81,7 +101,7 @@ Think like a spy breaking down the enemy's playbook. Extract:
 
 5. **FUNNEL STRUCTURE**: What type of funnel is it? What are the stages? Where does traffic likely come from? How does the conversion flow work?
 
-6. **STRATEGIC INSIGHTS**: Strengths to learn from, weaknesses to exploit, opportunities for ${targetMarket}, angles worth stealing, angles to avoid.
+6. **STRATEGIC INSIGHTS**: ${grounded ? `Map the competitor's playbook onto the user's grounding avatar. Strengths = what will work on THIS avatar. Weaknesses = what would flop on THIS avatar (wrong audience, cultural mismatch, missing proof). opportunities_for_your_market = angles the competitor missed that THIS avatar is hungry for. angles_to_steal = specific tactics worth translating to THIS avatar. angles_to_avoid = moves that would alienate THIS avatar.` : `Strengths to learn from, weaknesses to exploit, opportunities for ${targetMarket}, angles worth stealing, angles to avoid.`}
 
 RESPOND IN ${targetLanguage}. RESPOND IN VALID JSON:
 {
@@ -159,13 +179,37 @@ ${scrapedContent}
 Analyze this entire funnel and produce the complete clone with translation. Extract EVERY piece of copy, every image URL, every element.`;
 }
 
-export function buildReverseUserMessage(scrapedContent: string, urls: string[]): string {
-  return `Here is the competitor's funnel content scraped from ${urls.length} page(s):
+export function buildReverseUserMessage(
+  scrapedContent: string,
+  urls: string[],
+  groundingAvatar?: string,
+): string {
+  const urlLine = urls.length > 0
+    ? urls.map((u, i) => `--- PAGE ${i + 1}: ${u} ---`).join('\n')
+    : '(no landing pages scraped — rely on structured BrandSearch intel below)';
 
-${urls.map((u, i) => `--- PAGE ${i + 1}: ${u} ---`).join('\n')}
+  const groundingReminder = groundingAvatar && groundingAvatar.trim().length > 0
+    ? `\n\n⚠️ REMINDER: The user's GROUNDING AVATAR was provided in the system prompt. The competitor is probably NOT targeting the same person — your job is to MAP their persuasion playbook onto the user's avatar, not to extract a new one. The \`sub_avatar\` field in your output must describe the user's existing avatar, and your insights must evaluate the competitor's tactics through THAT avatar's lens (what works for them, what would flop, what's missing).\n`
+    : '';
 
-=== SCRAPED CONTENT ===
+  return `You may receive TWO kinds of evidence in the source material below:
+
+1. **BRANDSEARCH STRUCTURED INTEL** (if present): the brand's full Meta Ad Library — real ad headlines, body copy, CTAs, spend, reach, launch dates, runtime days, funnel types (TOF/MOF/BOF), targeting, format mix, plus product catalog (bestsellers with descriptions + prices) and engagement-ranked TikTok/Instagram posts. This is GROUND TRUTH — the actual creatives the brand is paying to run. Use it aggressively:
+   - "Longest-running ads" are PROVEN winners — their hooks are the MOST VALIDATED angles
+   - "Highest-spend ads" = where the brand is betting biggest
+   - Ad copy bodies contain the literal verbatim the brand thinks converts for its audience
+   - Funnel mix (TOF/MOF/BOF distribution) reveals their full-funnel strategy
+   - Bestsellers reveal the actual product-market fit
+   - Extract real verbatim quotes from the ad bodies — NOT paraphrased
+
+2. **SCRAPED LANDING PAGES** (if present): raw markdown of funnel pages — for deep copy/structure analysis.
+
+Cross-reference both. If the ad library shows 15 ads all hammering "belly fat after 40", that's a MUCH stronger signal than a single landing page's headline — weight evidence by frequency × spend × runtime.
+
+${urlLine}
+
+=== SOURCE MATERIAL ===
 ${scrapedContent}
-
-Reverse-engineer this ENTIRE funnel. Extract the sub-avatar, mechanism, copy arsenal, creative strategy, funnel structure, and strategic insights. Be thorough — this is competitive intelligence that will drive our entire campaign.`;
+${groundingReminder}
+Reverse-engineer this ENTIRE competitor operation. Extract the ${groundingAvatar ? 'mapping of the competitor\'s' : ''} mechanism, copy arsenal, creative strategy, funnel structure, and strategic insights. Quote real ad headlines and body lines verbatim in the verbatim_quotes and headlines fields. Be thorough — this intel drives our entire campaign.${groundingAvatar ? ' Remember: sub_avatar = the user\'s grounding avatar, NOT a new one extracted from the competitor.' : ''}`;
 }

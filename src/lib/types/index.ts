@@ -3,7 +3,9 @@
 // ============================================================
 
 import type { CoreAvatarInput, AvatarRunResult, SourceConfig } from '../avatars/types';
+import type { LocalizationCheckpoint } from '../avatars/localizeReverseEngineered';
 import type { ReverseEngineeredFunnel } from '../competitor/types';
+import type { BrandSearchBrand } from '../brandsearch/types';
 
 // === PROJECT ===
 
@@ -29,18 +31,41 @@ export interface Project {
   avatarSourceConfig?: SourceConfig;       // per-source toggles
   avatarRunResult?: AvatarRunResult;       // final sub-avatars + angles
 
-  // --- Selected sub-avatar (locked in after Gate 1, drives Gates 2-9) ---
-  // Once Gate 1 produces N candidate sub-avatars, the human picks ONE to
-  // explore. That pick is propagated to every downstream gate so the whole
-  // pipeline stays coherent (avoiding the bug where each gate rebuilt its
-  // own sub-avatars from scratch).
+  // --- Selected sub-avatar (currently VIEWED, drives display of per-SA gate outputs) ---
+  // In single-SA mode: the SA the human picked after Gate 1.
+  // In batch mode: the SA currently being viewed in the gate tabs.
   selectedSubAvatarId?: string;
 
-  // --- Funnel type (chosen after Gate 1, before Brand DNA / Gate 2) ---
-  // Determines the overall awareness funnel: where the prospect sits on
-  // Schwartz's awareness ladder. All downstream gates adapt their copy,
-  // hooks, and angles to this funnel type.
+  // --- Batch-run sub-avatar IDs (Matrix Mode) ---
+  // User checks N sub-avatars on Gate 1 + clicks "Launch Batch" → each runs
+  // Gate 2→9 in parallel, each on its own recommended funnel + sophistication.
+  // When set, gate outputs are stored per-SA under key `${projectId}:${gateId}:${saId}`.
+  // The legacy single-SA key `${projectId}:${gateId}` remains for Gate 1 + Brand DNA.
+  batchSubAvatarIds?: string[];
+
+  // --- Batch run progress (per-SA status during/after a batch pipeline) ---
+  // Map of subAvatarId → progress snapshot. Written live by runBatchPipeline.
+  // Surfaces per-SA progress bars on the project home page.
+  batchRunStatus?: Record<string, BatchSubAvatarRunStatus>;
+
+  // --- Funnel type (global override) ---
+  // Used in single-SA mode or as a manual override. In batch mode, each SA
+  // derives its own funnel from sa.recommended_awareness_level unless set.
   selectedFunnel?: FunnelType;
+
+  // --- Long-form copy format selector (G5) ---
+  // 'advertorial' = ZAK 7-block sales page (existing G5)
+  // 'native' = 300-600 word story-driven native ad
+  // 'listicle' = numbered list ad (scaffold, not yet implemented)
+  // 'skipped' = user skips G5 entirely, unlocks G6+G7 directly
+  selectedCopyFormat?: 'advertorial' | 'native' | 'listicle' | 'skipped';
+
+  // --- Ad Script format selector (G6) ---
+  // 'ugc' = talking-head UGC scripts (~45s, current default)
+  // 'vsl' = long-form Video Sales Letter (5-15min, structured 7-block)
+  // 'both' = produce both UGC + VSL
+  // 'skipped' = skip G6 entirely (static-only strategy), unlocks G7
+  selectedAdScriptFormat?: 'ugc' | 'vsl' | 'both' | 'skipped';
 
   // --- Ad Performance (real metrics fed back into learning engine) ---
   adPerformance?: AdPerformance[];
@@ -63,6 +88,40 @@ export interface Project {
 
   // --- Reference Ads (winning static ads the user uploads for Gate 7 inspiration) ---
   referenceAds?: AnalyzedAd[];
+
+  // --- BrandSearch Intel (PRE-GATE competitor brand research) ---
+  competitorBrands?: BrandSearchBrand[];
+
+  // --- Per-gate generation config (how many variants, hooks, beats to generate) ---
+  // User-controlled. Kept outside the auto-run loop so generation stays deterministic
+  // given a config. Read by gate prompts at run time.
+  gateConfigs?: Record<string, GateGenerationConfig>;
+
+  // --- Localization in-flight checkpoint ---
+  // Stashed mid-flow so a crash (API timeout, 500, empty scrape) can resume
+  // from the last completed phase instead of re-running from zero. Cleared
+  // once the localize run completes successfully.
+  localizationCheckpoint?: LocalizationCheckpoint | null;
+
+  // --- Background avatar excavation job (Gate 1) ---
+  // When non-null, a server-side runAvatarJob is in flight or has finished.
+  // Gate1 polls /api/avatars/jobs/{id} on mount; once status === 'completed'
+  // it hydrates the result into avatarRunResult and clears this field.
+  activeAvatarJobId?: string | null;
+
+  // --- Background deep-dive jobs (Gate 1, per sub-avatar) ---
+  // Map of subAvatarId → jobId. Set when a deep-dive runs in background;
+  // cleared once Gate1 polls completion and appends the dive to the
+  // sub-avatar. Per-sub-avatar so multiple users / multiple sub-avatars
+  // can have dives in flight independently.
+  activeDeepDiveJobs?: Record<string, string>;
+}
+
+export interface GateGenerationConfig {
+  hookCount?: number;          // G5 Native: opening-line variants. Default 3.
+  bodyVariantCount?: number;   // G5 Native: full body variants (different angle/POV). Default 1.
+  imageBeatCount?: number;     // G5 Native: image beats for creative handoff. Default 4.
+  closeVariantCount?: number;  // G5 Native: soft-close variants. Default 2.
 }
 
 // === ANALYZED AD (Claude vision analysis of uploaded reference images) ===
@@ -168,6 +227,36 @@ export interface AdPerformance {
   dateRange: string;       // "2026-03-01 to 2026-03-15"
   notes: string;
   addedAt: string;
+  // --- Optional creative tagging (auto-extracted from ad name when CSV
+  // is uploaded via the feedback loop). Backward compatible — manual
+  // entries leave these undefined and the prompt builder degrades.
+  hookType?: string;       // question | stat_number | social_proof | …
+  formatType?: string;     // ugc | advertorial | static_graphic | …
+  angle?: string;          // transformation | mechanism | proof | …
+  awareness?: string;      // unaware | problem | solution | product | most | retargeting
+  verdict?: 'winner' | 'loser' | 'mid' | 'unscored';
+  source?: 'manual' | 'csv';
+}
+
+// === BATCH RUN STATUS (Matrix Mode) ===
+// Per-sub-avatar snapshot of the batch pipeline. Written live by runBatchPipeline.
+
+export interface BatchSubAvatarRunStatus {
+  subAvatarId: string;
+  subAvatarNickname: string;
+  funnel: FunnelType;
+  sophisticationStage?: 1 | 2 | 3 | 4 | 5;
+  // The gates this SA is configured to run in the batch (may be a subset of
+  // gate2-9 if the user chose a range like gate2→gate5). Used by the UI as
+  // the progress denominator.
+  plannedGates: GateId[];
+  currentGate: GateId | null;
+  completedGates: GateId[];
+  stoppedAt: GateId | null;
+  reason: string | null;
+  startedAt: string;
+  updatedAt: string;
+  status: 'queued' | 'running' | 'stopped' | 'completed' | 'failed';
 }
 
 export type FunnelType =
@@ -207,7 +296,7 @@ export const FUNNEL_COLORS: Record<FunnelType, string> = {
 
 export type GateId = 'gate1' | 'gate2' | 'gate3' | 'brand-dna' | 'gate4' | 'gate5' | 'gate6' | 'gate7' | 'gate8' | 'gate9';
 
-export type GateStatus = 'locked' | 'available' | 'in_progress' | 'pending_review' | 'approved';
+export type GateStatus = 'locked' | 'available' | 'in_progress' | 'pending_review' | 'pending_decisions' | 'approved' | 'skipped';
 
 // === GATE ===
 
@@ -227,6 +316,9 @@ export interface GateConfig {
 export interface GateOutput {
   gateId: GateId;
   projectId: string;
+  // Which sub-avatar this output was built for. Set in batch mode (Gate 2-9).
+  // Null/undefined = legacy single-SA output or shared output (Gate 1, Brand DNA).
+  subAvatarId?: string;
   status: 'generating' | 'reviewing' | 'pending_decisions' | 'congruence_check' | 'approved' | 'stuck';
   data: Record<string, unknown>;
   generationLog: GenerationLogEntry[];
@@ -237,6 +329,26 @@ export interface GateOutput {
   createdAt: string;
   updatedAt: string;
 }
+
+// === GATES that are per-sub-avatar in batch mode ===
+// Gate 1 (contains all sub-avatars) and Brand DNA (one per project) stay shared.
+export const PER_SUB_AVATAR_GATES: GateId[] = [
+  'gate2', 'gate3', 'gate4', 'gate5', 'gate6', 'gate7', 'gate8', 'gate9',
+];
+
+export function isPerSubAvatarGate(gateId: GateId): boolean {
+  return PER_SUB_AVATAR_GATES.includes(gateId);
+}
+
+// Awareness level (from SubAvatarV2.recommended_awareness_level) → FunnelType.
+// Single source of truth — used by GateContextBar, runBatchPipeline, selectedSubAvatar helper.
+export const AWARENESS_TO_FUNNEL: Record<string, FunnelType> = {
+  unaware: 'full_unaware',
+  problem_aware: 'problem_aware',
+  solution_aware: 'solution_aware',
+  product_aware: 'product_aware',
+  most_aware: 'most_aware',
+};
 
 export interface GateCheckpoint {
   step: string;
@@ -251,6 +363,10 @@ export interface GenerationLogEntry {
   iteration: number;
   input_summary: string;
   output_summary: string;
+  // Full raw output — persisted on sub-agent + lead entries so we can recover
+  // structured data when the lead compiler truncates mid-JSON. output_summary
+  // stays as the 200-char preview for UI density.
+  raw_output?: string;
   score?: number;
   tokens_used?: { input: number; output: number };
 }

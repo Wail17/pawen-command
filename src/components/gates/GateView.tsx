@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { GateOutput, GateId } from '@/lib/types';
+import { GateOutput, GateId, Project } from '@/lib/types';
 import { ReviewPanel, CongruencePanel } from '@/components/ui/ReviewPanel';
+import { downloadMarkdown, exportGateAsPDF } from '@/lib/export/gateExport';
 
 interface GateViewProps {
   gateId: GateId;
@@ -15,7 +16,7 @@ interface GateViewProps {
   onInputModeChange: (mode: 'ai' | 'manual') => void;
   onGenerate: () => void;
   onRegenerate: () => void;
-  onApprove: () => void;
+  onApprove: (skipCongruence?: boolean) => void;
   onLoadDemo?: () => void; // Load demo/mock data for UI preview
   children: React.ReactNode; // Gate-specific content (decision points, etc.)
   contextBar?: React.ReactNode; // Funnel selector + sub-avatar switcher
@@ -24,6 +25,7 @@ interface GateViewProps {
   hasCongruenceCheck?: boolean; // Whether this gate runs a congruence check
   brandDNAStatus?: 'missing' | 'unlocked' | 'locked';
   projectId?: string;
+  project?: Project; // used for exports
 }
 
 export default function GateView({
@@ -46,6 +48,7 @@ export default function GateView({
   hasCongruenceCheck,
   brandDNAStatus,
   projectId,
+  project,
 }: GateViewProps) {
   const [showLog, setShowLog] = useState(false);
 
@@ -165,12 +168,42 @@ export default function GateView({
             🔄 Re-generate
           </button>
           <button
-            onClick={onApprove}
+            onClick={() => onApprove(false)}
             disabled={isGenerating}
             className="px-5 py-2.5 bg-success text-white font-semibold rounded-lg hover:bg-success/90 text-sm disabled:opacity-50"
           >
             ✅ Approve & Continue
           </button>
+          {hasCongruenceCheck && brandDNAStatus === 'locked' && !output.congruenceResult && (
+            <button
+              onClick={() => onApprove(true)}
+              disabled={isGenerating}
+              title="Bypass congruence check — unlock next gate immediately"
+              className="px-4 py-2.5 border border-warning/50 text-warning font-medium rounded-lg hover:bg-warning/10 text-sm disabled:opacity-50"
+            >
+              ⚡ Skip congruence & force approve
+            </button>
+          )}
+          {project && (
+            <>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => downloadMarkdown(project, gateId, output)}
+                  title="Export gate output as Markdown (.md) — pour envoyer à une IA"
+                  className="px-3 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-xs"
+                >
+                  📝 .md
+                </button>
+                <button
+                  onClick={() => exportGateAsPDF(project, gateId, output)}
+                  title="Export gate output as PDF — pour envoyer à un employé"
+                  className="px-3 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-text-muted text-xs"
+                >
+                  📄 PDF
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -15,6 +15,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
+import { apiUrl } from '../util/apiBaseUrl';
 
 export interface YoutubeFetchOptions {
   maxVideos?: number;     // default 16
@@ -46,7 +47,7 @@ async function searchYouTube(
   maxResults: number,
 ): Promise<YTVideo[]> {
   try {
-    const res = await fetch('/api/youtube', {
+    const res = await fetch(apiUrl('/api/youtube'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -66,7 +67,7 @@ async function searchYouTube(
 
 async function fetchComments(videoId: string): Promise<YTComment[]> {
   try {
-    const res = await fetch('/api/youtube', {
+    const res = await fetch(apiUrl('/api/youtube'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'comments', videoId }),

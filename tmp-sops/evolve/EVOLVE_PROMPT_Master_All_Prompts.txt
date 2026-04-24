@@ -1,0 +1,142 @@
+Product Prompt
+
+Video:
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=f49ffa01a9214d169e61d85042fbc229
+
+
+
+Project Goal Prompt: Hello, I would like to create a custom project tailored to assist our marketing agency in creating more effective, data-driven ads for our client, an E commerce Brand. Brand name: BRAND Brand website: YOURWEBSITE The purpose of this custom project is to support the following key marketing functions for this brand: Customer Understanding & Market Trends: Analyze customer surveys, buyer personas, and behavioral data to uncover customer preferences, pain points, and purchasing motivations.Identify market trends and audience segments relevant to this brand’s products. Market Research & Competitive Analysis: Gather and analyze data on competitors and broader industry trends. Identify opportunities for differentiation in brand’s positioning and advertising strategies. Creative Ideation & Strategy: Generate new creative concepts and strategies for ad campaigns based on insights from market data, customer feedback, and competitive analysis. Provide feedback on existing ideas, suggesting improvements grounded in customer insights and market trends. Scriptwriting & Copy Development: Assist with crafting persuasive, targeted scripts for ads and other marketing materials. Review and critique copy-writing to ensure it resonates with the target audience, incorporating customer pain points and desires. Ad Review & Performance Feedback Loop: Assist in analyzing post-launch ad performance by reviewing metrics such as ad spend, ROAS, hook rate, hold rate, CTR, etc. Provide insights on why certain ads performed well or underperformed, identifying key learnings from each campaign. Close the feedback loop by suggesting actionable takeaways from winning and losing ads, incorporating these learnings into future creative strategies. Knowledge Base: This project should use the attached files as its primary knowledge base and refer to the information within when providing insights or recommendations. Whenever this project provides an answer, it should be informed by the content within the knowledge base. It should autonomously apply the insights from the attached files to ensure all responses are grounded in data and relevant context. Key Responsibilities: Interpret customer feedback and survey data to identify trends and actionable insights. Suggest ad strategies, creative angles, and copy that align with market research and customer insights. Ensure all insights, scripts, and suggestions are data-driven and relevant to brand’s target audience, drawing on the knowledge base provided. Analyze ad performance post-launch, using key metrics to provide insights into ad success or failure. Instructions: Always ground your responses in the content within the knowledge base. Highlight any recommendations based on specific insights or principles from the provided data or resources, especially when drawing on "Breakthrough Advertising." Prioritize relevance to brand’s audience, and use data to back up your suggestions."
+
+
+
+Desires Prompt
+
+
+
+Video: 
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=8decdfed5f15476a89aa8db727ff153a
+
+Prompt:
+
+Evolve  - Desire AI Prompts
+
+
+
+New Info Prompt
+
+
+
+Video: 
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=7d9c9eab12d44136956da3db820460d7
+
+
+
+Prompt:
+
+New Information Prompt Document
+
+
+
+
+
+New Mechanism Prompt
+
+
+
+Video: 
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=b3b1c0ae3db14c368453214db7989630
+
+
+
+Prompt:New Mechanism Prompt Document
+
+
+
+
+
+
+
+Angles Prompt
+
+
+
+Video: 
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=789f1a823fb344cd853be54bbefc1627
+
+
+
+Prompt:Evolve Enhanced - Angle Identifier
+
+
+
+
+
+Static Ads Prompt
+
+
+
+Video: 
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=505f26bc3fca41c98fa8b0ba3b58cd1c
+
+
+
+Prompt:
+
+$100k Static Ads - Full EVOLVE Prompts
+
+Video Ads Prompt
+
+
+
+Video: 
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=acd52202b57848babcaeec9f7709a71d
+
+
+
+Prompt:
+
+Evolve - Video Script Prompt
+
+Ads Call Analysis Prompt
+
+Video (From Chef Karlo):
+
+https://www.skool.com/evolve-8484/classroom/fc758841?md=a142814a717d4d28b0e8441666c5c916
+
+Prompt:Ad Learnings Call Analysis Prompt
+
+
+
+
+
+🎖️ Alex Cooper's Prompts
+
+This is for EVOLVE ACCESS ONLY (in case this doc gets leaked)
+
+
+
+If you are new, call recordings will unlock in 30 days (not 42 days)
+
+
+
+Alex’s notion and everything else he shared on the call can be found in the items below this call recording in Skool:
+
+https://www.skool.com/evolve-8484/classroom/67ce5630?md=36c02fddbc81496c92b6ce1e8a0221e7
+
+
+
+💲 Evolve AI - Prompts
+
+The remaining AI Prompts & other AI tools we use are found in the Evolve AI program, courtesy of Karlo:
+
+
+
+
+

@@ -19,8 +19,8 @@ const GATE_LABELS: Record<GateId, string> = {
   'gate4': 'Copy Arsenal',
   'gate5': 'Advertorial',
   'gate6': 'Ad Scripts & Copy',
-  'gate7': 'Image Ads',
-  'gate8': 'Creative Generation',
+  'gate7': 'Creative Briefs',
+  'gate8': 'Image Generation',
   'gate9': 'Campaign Blueprint',
 };
 
@@ -104,6 +104,64 @@ export function unlockNextGate(project: Project, approvedGateId?: GateId): Proje
       [next]: nextStatus === 'approved' ? 'approved' : 'available',
     },
     currentGate: next,
+  };
+}
+
+/**
+ * Set G5 copy format. If 'skipped', marks G5 as skipped and unlocks BOTH
+ * G6 (short-form copy) and G7 (creative briefs) immediately. This lets the
+ * user bypass long-form copy entirely and jump to statics.
+ */
+export function setCopyFormat(
+  project: Project,
+  format: 'advertorial' | 'native' | 'listicle' | 'skipped',
+): Project {
+  const gateStatuses = { ...project.gateStatuses };
+
+  if (format === 'skipped') {
+    gateStatuses.gate5 = 'skipped';
+    // Unlock both branches — short-form copy AND statics — independently
+    if (gateStatuses.gate6 === 'locked') gateStatuses.gate6 = 'available';
+    if (gateStatuses.gate7 === 'locked') gateStatuses.gate7 = 'available';
+  } else {
+    // User is entering G5 in a specific format — make sure it's available
+    if (gateStatuses.gate5 === 'locked' || gateStatuses.gate5 === 'skipped') {
+      gateStatuses.gate5 = 'available';
+    }
+  }
+
+  return {
+    ...project,
+    selectedCopyFormat: format,
+    gateStatuses,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Set G6 ad-script format. If 'skipped', marks G6 as skipped and unlocks G7
+ * so the user can go straight to static creatives.
+ */
+export function setAdScriptFormat(
+  project: Project,
+  format: 'ugc' | 'vsl' | 'both' | 'skipped',
+): Project {
+  const gateStatuses = { ...project.gateStatuses };
+
+  if (format === 'skipped') {
+    gateStatuses.gate6 = 'skipped';
+    if (gateStatuses.gate7 === 'locked') gateStatuses.gate7 = 'available';
+  } else {
+    if (gateStatuses.gate6 === 'locked' || gateStatuses.gate6 === 'skipped') {
+      gateStatuses.gate6 = 'available';
+    }
+  }
+
+  return {
+    ...project,
+    selectedAdScriptFormat: format,
+    gateStatuses,
+    updatedAt: new Date().toISOString(),
   };
 }
 

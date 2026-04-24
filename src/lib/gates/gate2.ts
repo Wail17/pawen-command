@@ -44,7 +44,7 @@ const gate2: GateConfigDef = {
       id: 'avatar-researcher',
       name: 'Avatar Deep Dive Researcher',
       model: 'opus',
-      maxTokens: 20000,
+      maxTokens: 28000,
       systemPrompt: (project) => `You are an elite customer researcher for a $100M/year direct response brand. Your job: go DEEP into ONE specific sub-avatar's world. You search Reddit, forums, reviews, and communities.
 
 CRITICAL: You are NOT researching a generic target audience. You are researching ONE specific sub-avatar that Marcus already identified in Gate 1. Stay laser-focused on THIS sub-avatar. Use REAL verbatim quotes from actual people that match THIS sub-avatar's profile. Generic marketing language is UNACCEPTABLE.
@@ -114,7 +114,7 @@ RULES:
       id: 'desire-driller',
       name: 'Desire Deep Driller',
       model: 'opus',
-      maxTokens: 24000,
+      maxTokens: 32000,
       systemPrompt: (project) => `You are a mass psychology researcher specializing in hidden desires and buying motivations. You use the EVOLVE desire-drilling framework on ONE specific sub-avatar.
 
 Your job: find the REAL desires of THIS sub-avatar — not what they SAY they want, but what they ACTUALLY want at the deepest level.
@@ -352,7 +352,7 @@ RULES:
       id: 'language-miner',
       name: 'Customer Language Hook Miner',
       model: 'opus',
-      maxTokens: 16000,
+      maxTokens: 24000,
       dependsOn: ['avatar-researcher'],
       systemPrompt: (project) => `You are an elite hook writer and customer language specialist. You extract hook-ready phrases from ONE specific sub-avatar's raw language.
 
@@ -425,7 +425,7 @@ RULES:
       id: 'angle-extractor',
       name: 'Angle Identifier & Scorer',
       model: 'opus',
-      maxTokens: 12000,
+      maxTokens: 20000,
       dependsOn: ['avatar-researcher', 'desire-driller'],
       systemPrompt: (project) => `You are an angle identification specialist using the EVOLVE framework. You find specific REASONS TO BUY for ONE specific sub-avatar.
 
@@ -674,7 +674,61 @@ Respond in valid JSON with score, maxScore (100), dimensions, feedback, passed.`
   reviewCriteria: `Score each dimension /10. Authenticity is #1 priority — fake-sounding research = instant fail. Focus on ONE sub-avatar is #2 — drifting to other sub-avatars or a generic audience = instant fail. Total /100, pass ≥ 72%.`,
 
   reviewThreshold: 72,
-  hasCongruenceCheck: false,
+  hasCongruenceCheck: true,
+
+  congruencePrompt: `You are the Brand DNA Congruence Agent for the avatar deep-dive gate. This gate feeds every downstream gate with the sub-avatar language, fears, desires, and buying triggers. If it drifts from Brand DNA, every downstream copy asset inherits the drift.
+
+CHECK THE DEEP-DIVE AGAINST BRAND DNA:
+
+1. SUB-AVATAR LOCK (30%):
+   - Does the focused sub-avatar match the one declared on Brand DNA (if locked)?
+   - Are the name, nickname, and category consistent?
+   - Does the psychographic profile match the locked_avatar attributes?
+
+2. CUSTOMER LANGUAGE COMPLIANCE (25%):
+   - Do pain quotes and desire quotes use always_use vocabulary?
+   - Are there ZERO never_use words/phrases in the extracted verbatims or paraphrases?
+   - Is the tone/register consistent with voice_profile?
+
+3. MECHANISM & BELIEF ALIGNMENT (20%):
+   - Do surfaced failed solutions match the belief_error framing in Brand DNA (if locked)?
+   - Do desire scenarios align with the resolution_emotion and transformation narrative?
+   - Are triggers consistent with the locked mechanism context?
+
+4. EVIDENCE AUTHENTICITY (15%):
+   - Verbatims sound like real humans (not marketing-smooth)?
+   - Sources diverse (not all from one forum/platform)?
+   - Contradictions and messy realities preserved (not sanitized)?
+
+5. CROSS-GATE CONSISTENCY (10%):
+   - Avatar data matches Gate 1 sub-avatar selection?
+   - Product context lines up with what Brand DNA has locked?
+
+Flag EVERY deviation:
+- CRITICAL: Wrong sub-avatar focus, never_use word present, fabricated verbatim
+- WARNING: Voice drift, missing always_use words, sanitized pain points
+- MINOR: Formality shift, minor vocabulary deviation
+
+Respond in valid JSON:
+{
+  "score": 0,
+  "passed": false,
+  "dimensions": {
+    "sub_avatar_lock": 0,
+    "customer_language_compliance": 0,
+    "mechanism_belief_alignment": 0,
+    "evidence_authenticity": 0,
+    "cross_gate_consistency": 0
+  },
+  "driftReport": [
+    { "location": "section name / verbatim quote / etc.", "expected": "what Brand DNA says", "found": "what this gate produced", "severity": "CRITICAL|WARNING|MINOR" }
+  ],
+  "verdict": "CONGRUENT|NEEDS_ALIGNMENT|REBUILD",
+  "alignmentInstructions": "specific fixes",
+  "iteration": 0
+}`,
+
+  congruenceThreshold: 75,
 };
 
 export default gate2;

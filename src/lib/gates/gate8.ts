@@ -38,9 +38,8 @@ Transform each selected brief into multiple fal.ai generation configs across for
 7. Specify TECHNICAL quality (8K, professional, award-winning, etc.)
 8. End with COLOR GRADING notes
 
-### Model Selection
-- "fal-ai/flux-pro/v1.1" → photorealistic: lifestyle, product shots, testimonial-style, before/after with real people
-- "fal-ai/flux/dev" → creative/artistic: abstract concepts, data visualizations, mood pieces, stylized illustrations
+### Model Selection (LOCKED)
+- ALWAYS use "fal-ai/nano-banana-pro" for EVERY config. No other model allowed. Nano Banana Pro handles photorealistic, creative, and illustrative styles — we standardized on it for quality + consistency.
 
 ### Format-Specific Rules
 - Feed (1080×1080): Centered composition, key elements in center 70%
@@ -121,7 +120,7 @@ Output:
         "brief_name": "brief descriptive name",
         "format": "feed_1x1",
 
-        "model": "fal-ai/flux-pro/v1.1",
+        "model": "fal-ai/nano-banana-pro",
         "prompt": "PRODUCTION-QUALITY prompt (100-180 words). Include: subject, action, environment, lighting (direction + quality + color temp), mood, style, camera (lens + angle + DoF), quality keywords, color grading. NO text in image.",
         "negative_prompt": "text, watermark, logo, blurry, deformed, low quality, bad anatomy, extra limbs, cropped, worst quality, jpeg artifacts, ugly, duplicate, morbid, mutilated",
         "width": 1080,
@@ -192,7 +191,7 @@ RULES:
 - Vision review prompts must be specific to the brief's intent AND awareness level
 - All text overlays in ${project.targetLanguage}
 - guidance_scale: 7.5 for photorealistic, 3.5 for creative/artistic
-- Model selection must match visual style: flux-pro for realistic, flux/dev for creative`;
+- Model is ALWAYS "fal-ai/nano-banana-pro" — do not use any other model`;
 
     return msg;
   },

@@ -155,7 +155,7 @@ Return ONLY valid JSON in this exact format:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6-20250514',
-        max_tokens: 8192,
+        max_tokens: 14000,
         temperature: 0.8,
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: `Generate 2 ${template.name} carousel ads. Make them different in angle and emotional approach.` }],

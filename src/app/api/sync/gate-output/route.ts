@@ -99,6 +99,68 @@ export async function POST(req: Request) {
       );
     }
 
+    // === REGRESSION PROTECTION ===
+    // We lost an approved 70k G5 advertorial at 15:20 on 2026-04-14 because a stale
+    // empty IndexedDB shell got pushed over the good server version. Never again:
+    //   - Reject writes that downgrade status from approved → non-approved
+    //   - Reject writes that shrink an approved output by >50%
+    //   - Always snapshot the previous version into gate_outputs_history before upsert
+    const existingRows = (await sql`
+      SELECT status, data, length(data::text) as size
+      FROM gate_outputs_mirror WHERE id = ${id} LIMIT 1
+    `) as Array<{ status: string; data: unknown; size: number }>;
+    const existing = existingRows[0];
+
+    if (existing) {
+      const wasApproved = existing.status === 'approved';
+      const isDowngrade = wasApproved && status !== 'approved';
+      const isShrinkage = wasApproved && existing.size > 0 && json.length < existing.size * 0.5;
+      if (isDowngrade || isShrinkage) {
+        await writeAudit(req, session.user, 'gate.upsert_rejected', {
+          projectId: body.projectId,
+          gateId: body.gateId,
+          reason: isDowngrade ? 'status_downgrade' : 'size_shrinkage',
+          existingStatus: existing.status,
+          newStatus: status,
+          existingBytes: existing.size,
+          newBytes: json.length,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            rejected: true,
+            reason: isDowngrade ? 'status_downgrade' : 'size_shrinkage',
+            message: `Refusing to overwrite approved gate with ${isDowngrade ? 'lower status' : 'smaller payload'}. Server wins.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    // Snapshot previous version (best-effort — table may not exist on first run)
+    if (existing) {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS gate_outputs_history (
+            id SERIAL PRIMARY KEY,
+            gate_output_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            gate_id TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            status TEXT NOT NULL,
+            data JSONB NOT NULL,
+            archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `;
+        await sql`
+          INSERT INTO gate_outputs_history (gate_output_id, project_id, gate_id, owner, status, data)
+          VALUES (${id}, ${body.projectId}, ${body.gateId}, ${owner}, ${existing.status}, ${JSON.stringify(existing.data)}::jsonb)
+        `;
+      } catch (histErr) {
+        console.warn('[sync:gate-output] history snapshot failed:', histErr);
+      }
+    }
+
     await sql`
       INSERT INTO gate_outputs_mirror
         (id, project_id, gate_id, owner, status, data, created_at, updated_at)

@@ -14,7 +14,7 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
     name: 'Claude Opus 4.6',
     provider: 'anthropic',
     model: 'claude-opus-4-6',
-    maxTokens: 16384,
+    maxTokens: 32000,
     costPerInputMTok: 5,
     costPerOutputMTok: 25,
   },
@@ -23,7 +23,7 @@ export const MODEL_REGISTRY: Record<string, ModelConfig> = {
     name: 'Claude Sonnet 4.6',
     provider: 'anthropic',
     model: 'claude-sonnet-4-6',
-    maxTokens: 16384,
+    maxTokens: 32000,
     costPerInputMTok: 3,
     costPerOutputMTok: 15,
   },
@@ -66,8 +66,8 @@ export const AGENT_MODEL_MAP = {
   congruence: 'sonnet-4-6',
   vision: 'sonnet-4-6',
   compiler: 'opus-4-6',
-  manager: 'opus-4-6',     // Gate manager reviews sub-agent work
-  director: 'opus-4-6',    // Léa — final quality + cross-gate review
+  manager: 'sonnet-4-6',   // Gate manager reviews sub-agent work — Sonnet is plenty for QA/evaluation
+  director: 'sonnet-4-6',  // Léa — final quality + cross-gate review — evaluative, not generative
 } as const;
 
 export function getModelForRole(role: keyof typeof AGENT_MODEL_MAP): ModelConfig {

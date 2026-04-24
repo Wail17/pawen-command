@@ -241,6 +241,19 @@ export interface SubAvatarV2 {
   // the recommended-funnel badge in GateContextBar.
   recommended_awareness_level?: AwarenessLevel;
 
+  // Why this awareness level was picked — references verbatim signals.
+  // Surfaced on the sub-avatar card so the user understands the call.
+  recommended_awareness_reason?: string;
+
+  // Eugene Schwartz's 5 stages of market sophistication. Tells you what
+  // copy approach the MARKET expects (not just the prospect's awareness).
+  // Stage 1 = virgin market, direct claim wins.
+  // Stage 2 = direct claim works but you must shout louder.
+  // Stage 3 = bigger/more dramatic claim needed.
+  // Stage 4 = unique mechanism becomes the wedge.
+  // Stage 5 = explain the mechanism / new mechanism / story-driven angle.
+  market_sophistication?: MarketSophistication;
+
   // === Stackable, non-destructive enrichments ===
   // These are generated on-demand AFTER the main compile pass. They are
   // appended (never overwritten) so the user can re-run freely and compare.
@@ -340,6 +353,22 @@ export interface LocalizedDemographics {
   geographic_concentration: string[];
   cultural_references: string[];     // brands/figures/events native to target market
   language_register: string;         // "formal italian", "familiar fr-CA", ...
+}
+
+// === MARKET SOPHISTICATION (Eugene Schwartz) ===
+// Independent of awareness level. Describes how *crowded/jaded* the market is.
+// A prospect can be "problem-aware" in a Stage 5 market — same pain, but every
+// competitor has already promised the moon, so direct claim falls flat and you
+// need a unique mechanism or new story.
+
+export type MarketSophisticationStage = 1 | 2 | 3 | 4 | 5;
+
+export interface MarketSophistication {
+  stage: MarketSophisticationStage;
+  stage_name: string;             // "virgin market" | "direct claim" | "bigger claim" | "unique mechanism" | "new mechanism / story"
+  reasoning: string;              // 2-3 sentences citing competitor density, ad fatigue signals, claim escalation seen in scraped data
+  recommended_approach: string;   // what copy strategy actually works at this stage
+  copy_implications: string[];    // 3-5 actionable rules for downstream copy gates
 }
 
 // === AWARENESS LEVELS (Eugene Schwartz) ===

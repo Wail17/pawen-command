@@ -18,6 +18,7 @@ export type AuditAction =
   | 'project.upsert'
   | 'project.delete'
   | 'gate.upsert'
+  | 'gate.upsert_rejected'
   | 'gate.delete'
   | 'user.create'
   | 'user.update'
@@ -28,12 +29,22 @@ export type AuditAction =
   | 'contribute.delete'
   | 'curate.run'
   | 'avatar.awareness.generate'
+  | 'avatar.classify.generate'
   | 'avatar.deepdive.generate'
   | 'avatar.localize.generate'
   | 'avatar.enrich_reverse.generate'
+  | 'avatar.job.start'
+  | 'context.import'
   | 'rate_limit.hit'
   | 'suspicious.bulk_export'
-  | 'suspicious.rapid_fire';
+  | 'suspicious.rapid_fire'
+  // Phase U — Autonomous mode
+  | 'phase_u.distill'
+  | 'phase_u.constitution.update'
+  | 'phase_u.meta.perf_pull'
+  | 'phase_u.rerun.enqueue'
+  | 'phase_u.rerun.claim'
+  | 'phase_u.scout.run';
 
 export async function writeAudit(
   req: Request,

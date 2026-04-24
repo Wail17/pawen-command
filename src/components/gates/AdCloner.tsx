@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { mapWithConcurrency } from '@/lib/util/pLimit';
 
 interface ScrapedAd {
   id: string;
@@ -257,18 +258,25 @@ export default function AdCloner({ targetLanguage, targetMarket }: AdClonerProps
     }
   }, [format, strength]);
 
-  // Generate images one by one
+  // Generate images in parallel (concurrency=5). Ad cloner batches of 10-20
+  // ads used to run strictly sequentially — 30s × 20 = 10 min. With 5 in
+  // flight we finish in ~2-3 min while staying under Vercel's concurrency wall.
   const generateImagesSequential = useCallback(async (adIds: string[]) => {
+    let completed = 0;
     let generated = 0;
-    for (let i = 0; i < adIds.length; i++) {
-      const adId = adIds[i];
-      setProgress(`Generating image ${i + 1}/${adIds.length}...`);
 
-      const currentAds = await new Promise<AdWithTranslation[]>(resolve => {
-        setAds(prev => { resolve(prev); return prev; });
-      });
+    // Snapshot ads once so we don't race setAds callbacks per iteration
+    const currentAds = await new Promise<AdWithTranslation[]>(resolve => {
+      setAds(prev => { resolve(prev); return prev; });
+    });
+
+    await mapWithConcurrency(adIds, 5, async (adId) => {
       const ad = currentAds.find(a => a.id === adId);
-      if (!ad?.translation?.edit_prompt && !ad?.translation?.recreate_prompt && !ad?.translation?.nano_banana_prompt) continue;
+      if (!ad?.translation?.edit_prompt && !ad?.translation?.recreate_prompt && !ad?.translation?.nano_banana_prompt) {
+        completed++;
+        setProgress(`Generating images ${completed}/${adIds.length}...`);
+        return;
+      }
 
       setAds(prev => prev.map(a => a.id === adId ? { ...a, generating: true, cloneStatus: 'generating' } : a));
 
@@ -314,8 +322,11 @@ export default function AdCloner({ targetLanguage, targetMarket }: AdClonerProps
         setAds(prev => prev.map(a =>
           a.id === adId ? { ...a, generating: false, cloneStatus: 'error', cloneError: 'Network error' } : a
         ));
+      } finally {
+        completed++;
+        setProgress(`Generating images ${completed}/${adIds.length}...`);
       }
-    }
+    });
 
     setProgress(`Done! ${generated}/${adIds.length} images generated`);
     setStep('done');

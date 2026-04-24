@@ -8,6 +8,26 @@ Multi-agent AI pipeline for Meta Ads. Product/language/niche agnostic. Next.js 1
 **God panel**: https://pawen-command-center.vercel.app/admin
 **Vercel project**: `automatisation_lab_sykss` (team `webexpertbruxelles-5771s-projects`)
 
+## Critical IDs & storage paths (STOP guessing these)
+
+**IndexedDB name**: `pawen-command-center` (NOT `pawen-db`, NOT `autoecom-lab`). Defined in `src/lib/store/db.ts:103` as `DB_NAME`. Any console one-liner that reads/writes the client store MUST use this exact name.
+
+**IndexedDB stores**: `projects`, `gateOutputs`, `images`, `knowledge`, `trainingSources`, `trainingChunks`, `agentMemory`, `goldOutputs`, `learningProfile`, `templates`, `videoAds`, `adAttribution` (planned v7). Current version: v6.
+
+**Gate output key format**: `` `${projectId}:${gateId}` `` stored as `_key` field. `getGateOutput()` uses this directly; `restoreGateOutput()` rebuilds it. Never use a different separator.
+
+**Neon mirror tables**: `projects_mirror` (columns: `id, owner, name, data, created_at, updated_at`) and `gate_outputs_mirror` (columns: `id, project_id, gate_id, owner, status, data, created_at, updated_at`). The full object is in the JSONB `data` column — `fetchBootstrap` returns only `data`, clients hydrate directly into IndexedDB.
+
+**Bootstrap restore flow**: `src/app/page.tsx` `loadProjects()` is the ONLY place that runs bootstrap. Arrives via home dashboard only — if user opens a deep link like `/project/X/gate/gate5` on a fresh device, no restore runs. Content-score arbitration: server project wins if `subCount*10 + approvedCount*5` is higher than local. Gate outputs restored unconditionally.
+
+**Deploy flow**: `node scripts/deploy.mjs` — runs `vercel deploy --prod` then aliases `sykss-agency.vercel.app` → new deployment. Prod URL = `https://sykss-agency.vercel.app`.
+
+**Env vars on Vercel prod**: check with `npx -y vercel@latest env ls production`. Adding a var (`vercel env add NAME production`) requires a redeploy — env does NOT hot-reload. Critical vars: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `SESSION_SECRET` (32+ chars, throws at boot), `APP_PASSWORD`, `ADMIN_PASSWORD`, `DISCORD_WEBHOOK_URL`, `APIFY_TOKEN`, `FAL_AI_API_KEY`, `TAVILY_API_KEY`, `FIRECRAWL_API_KEY`, `META_ACCESS_TOKEN`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `BRANDSEARCH_API_KEY`, `BLOB_READ_WRITE_TOKEN`, `ALLOWED_ORIGINS`.
+
+**Test project**: MenoItaly = `12e0152b-740b-49ee-ae02-1fefba3a3d08` (Italy, it-IT, Estrobolome mechanism, 4 sub-avatars, G5 advertorial 17k chars). Use it for any bootstrap/hydration debugging.
+
+**Model roles** (`src/lib/ai/providers.ts` `AGENT_MODEL_MAP`): `generator` + `compiler` = Opus (creative). `reviewer`, `congruence`, `manager`, `director`, `vision` = Sonnet (evaluative/structured). Sub-agents per gate pick `opus|sonnet` individually in `src/lib/gates/gateN.ts`.
+
 ## Architecture (high level)
 
 - **Pipeline = 9 gates** (`gate1` → `gate9`), each runs agents that produce a `GateOutput`. Gate 1 = Avatar Excavation (fully custom), Gates 2-9 = generic `runGate` flow (`src/lib/agents/runGate.ts`) + `GateView`/`SmartGateOutput`.

@@ -13,7 +13,9 @@ import {
 } from '@/lib/ai/advisor';
 import { requireSession } from '@/lib/auth/session';
 
-// Allow up to 5 minutes for Opus with large prompts
+// Hobby plan caps maxDuration at 300s. Upgrade to Pro to bump this higher
+// (Fluid Compute allows up to 800s) — needed for 32k-token Opus calls under
+// tier-1 throughput (8k OTPM).
 export const maxDuration = 300;
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -101,16 +103,43 @@ export async function POST(req: NextRequest) {
   });
   if (beta) headers['anthropic-beta'] = beta;
 
+  // Retry helper for Anthropic overload / rate-limit errors. Without this,
+  // a single 429/529/503 burst from Anthropic cascades into a crashed gate
+  // (reviewer returns 500 → Léa loop aborts → whole gate marked failed).
+  // 4 attempts with exponential + jittered backoff, max ~45s added latency.
+  async function callAnthropicWithRetry(): Promise<Response> {
+    const retryableStatuses = new Set([408, 429, 500, 502, 503, 504, 529]);
+    const maxAttempts = stream ? 1 : 4; // streaming responses can't be retried mid-flight
+    let lastResp: Response | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const resp = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(295_000),
+      });
+      lastResp = resp;
+      if (resp.ok) return resp;
+      if (!retryableStatuses.has(resp.status) || attempt === maxAttempts) return resp;
+
+      // Exponential backoff with jitter: 2s, 5s, 12s. Respect Retry-After if present.
+      const retryAfterHeader = resp.headers.get('retry-after');
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+      const baseDelay = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? Math.min(retryAfterSec * 1000, 20_000)
+        : Math.min(2000 * Math.pow(2.2, attempt - 1), 15_000);
+      const jitter = Math.random() * 800;
+      await new Promise(r => setTimeout(r, baseDelay + jitter));
+    }
+    return lastResp!;
+  }
+
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(295_000), // ~5 min, just under maxDuration
-    });
+    const response = await callAnthropicWithRetry();
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({}));
       return NextResponse.json(
         { message: error.error?.message || 'Anthropic API error', details: error },
         { status: response.status }

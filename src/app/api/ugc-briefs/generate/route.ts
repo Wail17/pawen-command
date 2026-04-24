@@ -123,7 +123,7 @@ Requirements:
 
   const requestBody = {
     model: 'claude-sonnet-4-6-20250514',
-    max_tokens: 8192,
+    max_tokens: 12000,
     temperature: 0.7,
     system: [
       {

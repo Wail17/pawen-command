@@ -46,6 +46,26 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth/session';
 
+// ---------- KILL SWITCH ----------
+// When true, every incoming request returns 503 before any other logic runs.
+// Used to take the tool offline for QA / Ralph loop iterations without
+// deleting the deployment. Flip to `false` and redeploy to restore service.
+const KILL_SWITCH = true;
+
+function killSwitchResponse(): NextResponse {
+  return new NextResponse(
+    '<!doctype html><html><head><meta charset="utf-8"><title>Offline</title><style>body{font-family:system-ui,sans-serif;background:#000;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:2rem}h1{font-size:1.5rem;margin:0 0 1rem;font-weight:500}p{opacity:.6;margin:0;font-size:.95rem}</style></head><body><div><h1>Pawen Command Center — Offline</h1><p>Maintenance en cours. Accès suspendu.</p></div></body></html>',
+    {
+      status: 503,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store, must-revalidate',
+        'retry-after': '3600',
+      },
+    }
+  );
+}
+
 // ---------- Global API Rate Limiter (in-memory, per-user) ----------
 // Sliding window: tracks request timestamps per user key (username or IP).
 // Limits: 120 requests per 60 seconds per user on authenticated routes.
@@ -108,6 +128,7 @@ const PUBLIC_API_PATHS = new Set<string>([
   '/api/auth/me',
   '/api/admin/login',
   '/api/shopify-oauth/callback', // Shopify redirects here after OAuth — no session cookie
+  '/api/cron/meta-perf', // Phase U.3a — Vercel cron, auth via CRON_SECRET header (checked in handler)
 ]);
 
 // ---------- Helpers ----------
@@ -219,7 +240,48 @@ function sanitizeHeaders(req: NextRequest): Headers {
   return h;
 }
 
+// Constant-time-ish equality (same shape as adminServer.safeEqual) so the
+// kill-switch bypass doesn't leak timing info. Duplicated locally to keep
+// proxy.ts free of 'server-only' imports (edge runtime).
+function safeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function isKillSwitchBypassRequest(req: NextRequest): boolean {
+  // Bypass paths:
+  //   (a) x-admin-token == ADMIN_PASSWORD → admin tooling + ralph-loop smoke tests
+  //   (b) Vercel cron: Authorization: Bearer CRON_SECRET OR x-cron-secret == CRON_SECRET
+  //       so scheduled jobs keep running while the UI is offline.
+  const adminPw = process.env.ADMIN_PASSWORD;
+  if (adminPw && adminPw.length > 0) {
+    const token = req.headers.get('x-admin-token') ?? '';
+    if (token && safeEqualStr(token, adminPw)) return true;
+  }
+
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && cronSecret.length > 0) {
+    const xCron = req.headers.get('x-cron-secret') ?? '';
+    if (xCron && safeEqualStr(xCron, cronSecret)) return true;
+    const bearerHeader = req.headers.get('authorization');
+    if (bearerHeader && bearerHeader.startsWith('Bearer ')) {
+      const bearer = bearerHeader.slice(7);
+      if (bearer && safeEqualStr(bearer, cronSecret)) return true;
+    }
+  }
+
+  return false;
+}
+
 export function proxy(req: NextRequest): NextResponse {
+  // 0. KILL SWITCH — first thing, before anything else.
+  // Exception: admin tooling with a valid x-admin-token header is allowed
+  // through so maintenance tasks + /api/admin/* stay operable while the
+  // tool is offline to normal users.
+  if (KILL_SWITCH && !isKillSwitchBypassRequest(req)) return killSwitchResponse();
+
   const { pathname } = req.nextUrl;
 
   // 0. Periodic bucket cleanup

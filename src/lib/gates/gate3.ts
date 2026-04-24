@@ -127,7 +127,7 @@ RULES:
     {
       id: 'belief-error',
       name: 'False Belief Identifier',
-      model: 'opus',
+      model: 'sonnet',
       systemPrompt: (project, previousOutputs) => {
         const g1 = previousOutputs['gate1'] as Record<string, unknown> | undefined;
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
@@ -335,7 +335,7 @@ RULES:
     {
       id: 'root-cause-phase2',
       name: 'Root Cause Simplifier & Aha Builder',
-      model: 'opus',
+      model: 'sonnet',
       dependsOn: ['root-cause-phase1'],
       systemPrompt: (project) => `You are a master simplifier and "aha moment" architect. You take complex scientific findings and distill them into 6th grade reading level explanations that create instant understanding.
 
@@ -556,7 +556,7 @@ RULES:
     {
       id: 'mechanism-simplifier',
       name: 'Mechanism Simplifier & Copy Writer (ZAK Part 2)',
-      model: 'opus',
+      model: 'sonnet',
       dependsOn: ['mechanism-builder'],
       systemPrompt: (project) => `You are a world-class direct response copywriter and product strategist for a $100M/year brand in the ${project.niche || project.targetMarket} space. You are provided with a unique solution mechanism – a strategic, research-backed theory of how to solve a specific problem by addressing it at the root level. This is not about the product itself – it's about the underlying process or approach that makes it possible to fix the real issue.
 
@@ -955,7 +955,62 @@ Respond in valid JSON with score, maxScore (100), dimensions array (each with na
   reviewCriteria: `Score each dimension /10. The aha moment and narrative alignment are the most critical — weak performance there cannot be offset by strong performance elsewhere. Total /100, pass >= 72%.`,
 
   reviewThreshold: 72,
-  hasCongruenceCheck: false,
+  hasCongruenceCheck: true,
+
+  congruencePrompt: `You are the Brand DNA Congruence Agent for the root cause + mechanism gate. This gate LOCKS the mechanism name, root cause, belief error, and 3 mechanism steps that every downstream gate (4-9) must repeat verbatim. Drift here multiplies across every future asset.
+
+CHECK EACH LOCKED ELEMENT AGAINST BRAND DNA:
+
+1. MECHANISM NAME LOCK (30%):
+   - Is the mechanism_name consistent with Brand DNA locked_terms (if already set)?
+   - Is it a proprietary, memorable, credible name (not generic)?
+   - Is it used identically across all references in this gate output?
+
+2. LOCKED TERMS RESPECTED (25%):
+   - root_cause_one_sentence framed consistently across all mentions?
+   - belief_error framed consistently?
+   - Exact wording preserved for the 3 mechanism steps?
+   - product_descriptor used correctly?
+
+3. VOICE PROFILE MATCH (20%):
+   - Aha moment sentence matches voice_profile formality and emotional_tone?
+   - Simplifications use words from voice_profile vocabulary (never phrases_to_avoid)?
+   - Damaging admission has authentic voice (not marketing-speak)?
+
+4. CUSTOMER LANGUAGE COMPLIANCE (15%):
+   - Zero never_use words/phrases present?
+   - Always_use words incorporated where natural?
+   - Root cause explanation uses avatar's actual language, not jargon?
+
+5. CROSS-GATE CONSISTENCY (10%):
+   - Mechanism aligns with Gate 1 avatars and Gate 2 deep dive?
+   - Belief error corresponds to an actual avatar belief surfaced in Gate 2?
+
+Flag EVERY deviation:
+- CRITICAL: Mechanism name mismatch with locked_terms, never_use word present, belief_error contradicts Gate 2
+- WARNING: Voice drift, missing always_use words, generic simplification
+- MINOR: Formality shift, minor vocabulary deviation
+
+Respond in valid JSON:
+{
+  "score": 0,
+  "passed": false,
+  "dimensions": {
+    "mechanism_name_lock": 0,
+    "locked_terms_respected": 0,
+    "voice_profile_match": 0,
+    "customer_language_compliance": 0,
+    "cross_gate_consistency": 0
+  },
+  "driftReport": [
+    { "location": "mechanism name / aha sentence / step 1 / etc.", "expected": "what Brand DNA says", "found": "what this gate produced", "severity": "CRITICAL|WARNING|MINOR" }
+  ],
+  "verdict": "CONGRUENT|NEEDS_ALIGNMENT|REBUILD",
+  "alignmentInstructions": "specific fixes — reference exact elements",
+  "iteration": 0
+}`,
+
+  congruenceThreshold: 80,
 };
 
 export default gate3;

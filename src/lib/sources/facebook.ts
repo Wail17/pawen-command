@@ -18,6 +18,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
+import { apiUrl } from '../util/apiBaseUrl';
 
 export interface FacebookFetchOptions {
   maxPosts?: number;
@@ -56,7 +57,7 @@ async function scrapeViaApify(
   maxComments: number,
 ): Promise<FbApifyCallResult> {
   try {
-    const res = await fetch('/api/facebook', {
+    const res = await fetch(apiUrl('/api/facebook'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

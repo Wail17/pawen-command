@@ -26,6 +26,8 @@ import {
 import type { ReverseEngineeredFunnel } from '@/lib/competitor/types';
 
 import { extractJSON } from '../util/extractJson';
+import { mapWithConcurrency } from '../util/pLimit';
+import { apiUrl } from '../util/apiBaseUrl';
 import { runSourceFetchers } from '../sources';
 import type { RedditDepth } from '../sources/reddit';
 import { webSearch, scrapeMany, toRawItem, languageModifier } from '../sources/common';
@@ -84,7 +86,7 @@ END OF REFERENCE METHODOLOGY. The task-specific instructions follow.`;
 // run. Never throws — falls back to just the base prefix on error.
 async function buildAvatarKnowledgePrefix(): Promise<string> {
   try {
-    const res = await fetch('/api/curated-prefix?agent=marcus');
+    const res = await fetch(apiUrl('/api/curated-prefix?agent=marcus'));
     if (!res.ok) return BASE_AVATAR_KNOWLEDGE_PREFIX;
     const data = await res.json();
     const curatedPrefix = typeof data?.prefix === 'string' ? data.prefix : '';
@@ -108,12 +110,13 @@ const ANALYZER_MODEL = 'claude-sonnet-4-6';
 // inside the timeout. Clustering quality is more than sufficient for this task.
 const COMPILE_MODEL = 'claude-sonnet-4-6';
 
-// Anthropic free/dev tier rate limit: 30k input tokens / minute on Sonnet 4.6.
-// One analyzer call ~= (system prompt 2k) + (raw content 30k) ~= 32k input tokens.
-// → run analyzers SEQUENTIALLY with a small spacing, and cap input chars.
-// Bumped 80k → 120k for the v2 "deeper research" push: more verbatims per source.
-const MAX_ANALYZER_INPUT_CHARS = 120_000; // ~30k input tokens of content
-const ANALYZER_SPACING_MS = 3000;         // gap between analyzer calls (rate limit safety)
+// Anthropic rate limit: 30k input tokens / minute on Sonnet 4.6 free tier,
+// much higher on paid. Running two analyzers concurrently with a small stagger
+// keeps us well inside the paid tier's budget while cutting Phase 3 wall-clock
+// time roughly in half. If we ever hit 429 we already retry with long backoff.
+const MAX_ANALYZER_INPUT_CHARS = 100_000; // ~25k input tokens of content
+const ANALYZER_CONCURRENCY = 3;           // up to 3 analyzer LLM calls in flight
+const ANALYZER_STAGGER_MS = 600;          // staggered start between waves
 
 // Retry config. Rate-limit errors (429/529/503) get long backoffs + 4 retries.
 // Other errors (500, network, timeouts) get at most 1 retry with short backoff —
@@ -151,7 +154,7 @@ async function callLLM(params: LLMCallParams): Promise<LLMCallResult> {
 
   for (let attempt = 0; attempt < MAX_LLM_RETRIES; attempt++) {
     try {
-      const res = await fetch('/api/generate', {
+      const res = await fetch(apiUrl('/api/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -260,9 +263,11 @@ interface CostAccumulator {
   costUSD: number;
 }
 
-// ---------- Layer A: full single-shot compile (Sonnet, 16k tokens) ----------
+// ---------- Layer A: full single-shot compile (Sonnet, 12k tokens) ----------
 // Output-token budget is the main constraint here: at Sonnet's ~120 tok/s,
-// 16k tokens finishes in ~2.2 min — well inside the 5-min /api/generate timeout.
+// 12k tokens finishes in ~1.7 min — comfortably inside the 5-min
+// /api/generate timeout. 16k was overkill; 3-5 sub-avatars with compact
+// verbatims fit well under 12k.
 async function tryFullCompile(
   core: CoreAvatarInput,
   analysesText: Record<string, string>,
@@ -272,7 +277,7 @@ async function tryFullCompile(
 ): Promise<{ parsed: CompileOutput | null; rawText: string }> {
   onProgress?.({
     phase: 'compiling',
-    message: 'Marcus: full single-shot compile (Sonnet, 16k tokens)...',
+    message: 'Marcus: full single-shot compile (Sonnet, 12k tokens)...',
   });
 
   const resp = await callLLM({
@@ -281,7 +286,7 @@ async function tryFullCompile(
     systemPrefix,
     userMessage: buildCompileUserMessage(core, analysesText),
     temperature: 0.6,
-    maxTokens: 16000,
+    maxTokens: 12000,
   });
   acc.tokens.input += resp.tokensUsed.input;
   acc.tokens.output += resp.tokensUsed.output;
@@ -310,7 +315,7 @@ async function tryFullCompile(
       buildCompileUserMessage(core, analysesText) +
       '\n\nIMPORTANT: Output COMPLETE valid JSON. Keep each verbatim quote SHORT (1-2 sentences). NEVER refuse. NEVER explain thin data. Just produce 3-5 sub-avatars with whatever is available.',
     temperature: 0.4,
-    maxTokens: 16000,
+    maxTokens: 12000,
   });
   acc.tokens.input += retryResp.tokensUsed.input;
   acc.tokens.output += retryResp.tokensUsed.output;
@@ -371,89 +376,91 @@ async function tryTwoPassCompile(
 
   onProgress?.({
     phase: 'compiling',
-    message: `Pass 1 done: ${skeleton.sub_avatars.length} skeletons. Generating angles (Sonnet, sequential)...`,
+    message: `Pass 1 done: ${skeleton.sub_avatars.length} skeletons. Generating angles (Sonnet, parallel)...`,
   });
 
-  // === PASS 2: Sonnet generates angles per sub-avatar, sequentially ===
-  const enrichedSubAvatars: SubAvatarV2[] = [];
+  // === PASS 2: Sonnet generates angles per sub-avatar, 2 in parallel ===
+  // Previously sequential with 2s spacing = ~10s for 5 avatars. Parallel with
+  // concurrency=2 + small stagger finishes in ~4s while still respecting
+  // Anthropic's per-minute token bucket.
+  const enrichedSubAvatars: SubAvatarV2[] = await mapWithConcurrency(
+    skeleton.sub_avatars,
+    2,
+    async (sa, i) => {
+      // Staggered start so both calls don't hit the API on the same ms
+      if (i > 0) await sleep(300 * i);
 
-  for (let i = 0; i < skeleton.sub_avatars.length; i++) {
-    const sa = skeleton.sub_avatars[i];
-    onProgress?.({
-      phase: 'compiling',
-      message: `Pass 2: angles for ${sa.nickname || sa.name} (${i + 1}/${skeleton.sub_avatars.length})...`,
-    });
-
-    const summary = {
-      id: sa.id,
-      name: sa.name,
-      nickname: sa.nickname,
-      dominant_category: sa.dominant_category,
-      description: sa.description,
-      top_verbatims: (sa.verbatim_quotes ?? []).slice(0, 15).map(v => v.quote),
-      emotional_triggers: sa.emotional_triggers ?? [],
-      past_attempts_failures: sa.past_attempts_failures ?? [],
-    };
-
-    let angles: SubAvatarAngles | null = null;
-    try {
-      const anglesResp = await callLLM({
-        model: ANALYZER_MODEL, // Sonnet is fast + cheap for the angles task
-        systemPrompt: buildAnglesSystemPrompt(core),
-        systemPrefix,
-        userMessage: buildAnglesUserMessage(summary),
-        temperature: 0.6,
-        maxTokens: 4096,
+      onProgress?.({
+        phase: 'compiling',
+        message: `Pass 2: angles for ${sa.nickname || sa.name} (${i + 1}/${skeleton.sub_avatars.length})...`,
       });
-      acc.tokens.input += anglesResp.tokensUsed.input;
-      acc.tokens.output += anglesResp.tokensUsed.output;
-      acc.costUSD += estimateCostUSD(anglesResp.tokensUsed, ANALYZER_MODEL);
 
-      angles = extractJSON<SubAvatarAngles>(anglesResp.content);
+      const summary = {
+        id: sa.id,
+        name: sa.name,
+        nickname: sa.nickname,
+        dominant_category: sa.dominant_category,
+        description: sa.description,
+        top_verbatims: (sa.verbatim_quotes ?? []).slice(0, 15).map(v => v.quote),
+        emotional_triggers: sa.emotional_triggers ?? [],
+        past_attempts_failures: sa.past_attempts_failures ?? [],
+      };
 
-      if (typeof window !== 'undefined') {
-        console.log(`[compile:pass2:${sa.id}]`, angles ? 'angles parsed OK' : 'angles parse FAILED');
+      let angles: SubAvatarAngles | null = null;
+      try {
+        const anglesResp = await callLLM({
+          model: ANALYZER_MODEL, // Sonnet is fast + cheap for the angles task
+          systemPrompt: buildAnglesSystemPrompt(core),
+          systemPrefix,
+          userMessage: buildAnglesUserMessage(summary),
+          temperature: 0.6,
+          maxTokens: 6000,
+        });
+        acc.tokens.input += anglesResp.tokensUsed.input;
+        acc.tokens.output += anglesResp.tokensUsed.output;
+        acc.costUSD += estimateCostUSD(anglesResp.tokensUsed, ANALYZER_MODEL);
+
+        angles = extractJSON<SubAvatarAngles>(anglesResp.content);
+
+        if (typeof window !== 'undefined') {
+          console.log(`[compile:pass2:${sa.id}]`, angles ? 'angles parsed OK' : 'angles parse FAILED');
+        }
+      } catch (e) {
+        if (typeof window !== 'undefined') {
+          console.warn(`[compile:pass2:${sa.id}] angles call threw:`, e);
+        }
       }
-    } catch (e) {
-      if (typeof window !== 'undefined') {
-        console.warn(`[compile:pass2:${sa.id}] angles call threw:`, e);
-      }
-    }
 
-    // Safe fallback angles if the Sonnet call flopped
-    const safeAngles: SubAvatarAngles = angles ?? {
-      positioning: {
-        framework: 'new_mechanism',
-        description: `Position ${core.product} as a new way to address ${sa.dominant_category}-driven ${core.niche} pain.`,
-        rationale: 'Auto-generated default — angle LLM call failed.',
-      },
-      hooks: [
-        (sa.description ?? '').split('.')[0] || sa.name,
-        `Have you tried everything for ${core.surface_desire}?`,
-        `What if the real cause was ${sa.dominant_category}?`,
-      ],
-      story_angle: {
-        problem: sa.description ?? '',
-        agitation: (sa.past_attempts_failures ?? []).slice(0, 2).join('; '),
-        solution: core.product,
-        mechanism: 'A new approach.',
-        cta: `Discover ${core.product}.`,
-      },
-    };
+      // Safe fallback angles if the Sonnet call flopped
+      const safeAngles: SubAvatarAngles = angles ?? {
+        positioning: {
+          framework: 'new_mechanism',
+          description: `Position ${core.product} as a new way to address ${sa.dominant_category}-driven ${core.niche} pain.`,
+          rationale: 'Auto-generated default — angle LLM call failed.',
+        },
+        hooks: [
+          (sa.description ?? '').split('.')[0] || sa.name,
+          `Have you tried everything for ${core.surface_desire}?`,
+          `What if the real cause was ${sa.dominant_category}?`,
+        ],
+        story_angle: {
+          problem: sa.description ?? '',
+          agitation: (sa.past_attempts_failures ?? []).slice(0, 2).join('; '),
+          solution: core.product,
+          mechanism: 'A new approach.',
+          cta: `Discover ${core.product}.`,
+        },
+      };
 
-    enrichedSubAvatars.push({
-      ...sa,
-      angles: safeAngles,
-      launch_order: i + 1,
-      recommended_for_test: false, // set properly below
-      recommendation_reason: '',
-    });
-
-    // Rate-limit spacing between Sonnet calls
-    if (i < skeleton.sub_avatars.length - 1) {
-      await sleep(2000);
-    }
-  }
+      return {
+        ...sa,
+        angles: safeAngles,
+        launch_order: i + 1,
+        recommended_for_test: false, // set properly below
+        recommendation_reason: '',
+      } as SubAvatarV2;
+    },
+  );
 
   // === Assemble comparative_table + final_recommendation deterministically ===
   let bestIdx = 0;
@@ -720,7 +727,7 @@ export async function runAvatarExcavation(
       systemPrompt: buildDiscoverySystemPrompt(),
       userMessage: buildDiscoveryUserMessage(core, reverseSeeds),
       temperature: 0.4,
-      maxTokens: 4096,
+      maxTokens: 8192,
     });
     phaseTimings.discovery_ms = Date.now() - discoveryStart;
     totalTokens.input += discoveryResp.tokensUsed.input;
@@ -804,6 +811,7 @@ export async function runAvatarExcavation(
     // Analyze which sources yielded the richest signal and run
     // additional queries on the top producers. Skip barren sources.
     // ================================================================
+    let sourceDoubledItemCount = 0;
     try {
       if (rawSignal && rawSignal.total_items > 0) {
         const sourceBreakdown = rawSignal.source_breakdown;
@@ -883,13 +891,9 @@ export async function runAvatarExcavation(
               };
             }
 
-            // Rebuild raw signal with enlarged corpus
-            try {
-              rawSignal = buildRawSignal({
-                fetchData: fetchResult.data,
-                language: core.language,
-              });
-            } catch { /* non-fatal */ }
+            // Don't rebuild rawSignal here — Phase 3.5 will rebuild once if
+            // gap-fill runs, or we rebuild at the end if it's skipped.
+            sourceDoubledItemCount = doubleItems.length;
 
             onProgress?.({
               phase: 'fetching',
@@ -906,7 +910,7 @@ export async function runAvatarExcavation(
     }
 
     // ================================================================
-    // PHASE 3 — PER-SOURCE ANALYZERS (sequential to respect rate limits)
+    // PHASE 3 — PER-SOURCE ANALYZERS (parallelized, rate-limit-aware)
     // ================================================================
     const analyzeStart = Date.now();
 
@@ -920,76 +924,80 @@ export async function runAvatarExcavation(
 
     onProgress?.({
       phase: 'analyzing',
-      message: `Running ${analyzerTasks.length} source analyzers sequentially (rate-limit safe)...`,
+      message: `Running ${analyzerTasks.length} source analyzers in parallel (concurrency=${ANALYZER_CONCURRENCY})...`,
       progress: 0.55,
     });
 
-    const analyzerResults: Array<{
-      source: SourceType;
-      analysis: SourceAnalysis | null;
-    }> = [];
+    // Track completion counter for progress UX since tasks run in parallel
+    let completed = 0;
 
-    for (let i = 0; i < analyzerTasks.length; i++) {
-      const { source, raw } = analyzerTasks[i];
-      const rawText = buildAnalyzerInput(raw);
-
-      onProgress?.({
-        phase: 'analyzing',
-        source,
-        message: `Analyzing ${source} (${raw.items.length} items, ${(rawText.length / 1000).toFixed(0)}k chars input, ${i + 1}/${analyzerTasks.length})...`,
-      });
-
-      try {
-        const resp = await callLLM({
-          model: ANALYZER_MODEL,
-          systemPrompt: buildAnalyzerSystemPrompt(source, core),
-          systemPrefix,
-          userMessage: buildAnalyzerUserMessage(source, rawText),
-          temperature: 0.3,
-          maxTokens: 8192, // v2: was 6144 — more verbatims per source
-        });
-        totalTokens.input += resp.tokensUsed.input;
-        totalTokens.output += resp.tokensUsed.output;
-        totalCostUSD += estimateCostUSD(resp.tokensUsed, ANALYZER_MODEL);
-
-        const parsed = extractJSON<SourceAnalysis>(resp.content);
-
-        // Browser console: full visibility into what Sonnet returned
-        if (typeof window !== 'undefined') {
-          console.log(`[analyzer:${source}]`, {
-            inputChars: rawText.length,
-            inputPreview: rawText.slice(0, 400),
-            outputPreview: resp.content.slice(0, 600),
-            parsedVerbatims: parsed?.verbatim_quotes?.length ?? 0,
-            parseFailed: parsed === null,
-          });
+    const analyzerResults = await mapWithConcurrency(
+      analyzerTasks,
+      ANALYZER_CONCURRENCY,
+      async ({ source, raw }, i): Promise<{ source: SourceType; analysis: SourceAnalysis | null }> => {
+        // Staggered start so we don't hammer the API on the same ms and
+        // trip rate limits. First wave fires together, subsequent waves
+        // get a small offset per slot.
+        if (i >= ANALYZER_CONCURRENCY) {
+          await sleep(ANALYZER_STAGGER_MS * (i % ANALYZER_CONCURRENCY));
         }
 
-        const verbatimCount = parsed?.verbatim_quotes?.length ?? 0;
+        const rawText = buildAnalyzerInput(raw);
+
         onProgress?.({
           phase: 'analyzing',
           source,
-          message: parsed
-            ? `${source}: ${verbatimCount} verbatims extracted`
-            : `${source}: JSON PARSE FAILED — raw: ${resp.content.slice(0, 150).replace(/\n/g, ' ')}`,
+          message: `Analyzing ${source} (${raw.items.length} items, ${(rawText.length / 1000).toFixed(0)}k chars)...`,
         });
 
-        analyzerResults.push({ source, analysis: parsed });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Unknown analyzer error';
-        onProgress?.({
-          phase: 'analyzing',
-          source,
-          message: `${source} analyzer failed: ${msg.slice(0, 120)}`,
-        });
-        analyzerResults.push({ source, analysis: null });
-      }
+        try {
+          const resp = await callLLM({
+            model: ANALYZER_MODEL,
+            systemPrompt: buildAnalyzerSystemPrompt(source, core),
+            systemPrefix,
+            userMessage: buildAnalyzerUserMessage(source, rawText),
+            temperature: 0.3,
+            maxTokens: 6000, // right-sized from 8192 — most analyzers output <3k
+          });
+          totalTokens.input += resp.tokensUsed.input;
+          totalTokens.output += resp.tokensUsed.output;
+          totalCostUSD += estimateCostUSD(resp.tokensUsed, ANALYZER_MODEL);
 
-      // Spacing between calls to keep input-tokens-per-minute under control
-      if (i < analyzerTasks.length - 1) {
-        await sleep(ANALYZER_SPACING_MS);
-      }
-    }
+          const parsed = extractJSON<SourceAnalysis>(resp.content);
+
+          if (typeof window !== 'undefined') {
+            console.log(`[analyzer:${source}]`, {
+              inputChars: rawText.length,
+              outputPreview: resp.content.slice(0, 400),
+              parsedVerbatims: parsed?.verbatim_quotes?.length ?? 0,
+              parseFailed: parsed === null,
+            });
+          }
+
+          completed++;
+          const verbatimCount = parsed?.verbatim_quotes?.length ?? 0;
+          onProgress?.({
+            phase: 'analyzing',
+            source,
+            message: parsed
+              ? `${source}: ${verbatimCount} verbatims (${completed}/${analyzerTasks.length})`
+              : `${source}: JSON PARSE FAILED (${completed}/${analyzerTasks.length})`,
+          });
+
+          return { source, analysis: parsed };
+        } catch (e) {
+          completed++;
+          const msg = e instanceof Error ? e.message : 'Unknown analyzer error';
+          onProgress?.({
+            phase: 'analyzing',
+            source,
+            message: `${source} failed: ${msg.slice(0, 100)} (${completed}/${analyzerTasks.length})`,
+          });
+          return { source, analysis: null };
+        }
+      },
+    );
+
     phaseTimings.analyze_ms = Date.now() - analyzeStart;
 
     // Build map of structured analyses for the compile phase.
@@ -1017,17 +1025,38 @@ export async function runAvatarExcavation(
     });
 
     // ================================================================
-    // PHASE 3.5 — GAP-FILL SECOND WAVE
+    // PHASE 3.5 — GAP-FILL SECOND WAVE (conditional)
     // ================================================================
     // Ask Sonnet to look at what the analyzers extracted, identify what's
-    // UNDERREPRESENTED (missing emotions, missing demographics, missing
-    // trigger moments), and produce 4-6 targeted follow-up queries. Then
+    // UNDERREPRESENTED, and produce 4-6 targeted follow-up queries. Then
     // run those queries through Tavily, scrape the top results, fold the
-    // new items into the raw signal AND into a synthetic "searchWide2"
-    // analyzer input that the compile phase will see.
+    // new items into the raw signal AND the compile input.
     //
+    // SKIP GUARD: if the first wave already produced rich data (>=180
+    // verbatims across >=3 analyzers), gap-fill adds ~60-90s for marginal
+    // improvement. Skip to cut wall-clock time on well-covered niches.
     // Never fatal — any failure just skips the wave.
-    try {
+    const totalVerbatimsCaptured = analyzerResults.reduce(
+      (sum, r) => sum + (r.analysis?.verbatim_quotes?.length ?? 0),
+      0,
+    );
+    const shouldSkipGapFill = totalVerbatimsCaptured >= 180 && successfulAnalyzers >= 3;
+
+    if (shouldSkipGapFill) {
+      onProgress?.({
+        phase: 'analyzing',
+        message: `Gap-fill skipped: ${totalVerbatimsCaptured} verbatims across ${successfulAnalyzers} sources already (rich enough).`,
+        progress: 0.82,
+      });
+      if (typeof window !== 'undefined') {
+        console.log('[avatar:gap-fill] skipped — first wave is rich', {
+          verbatims: totalVerbatimsCaptured,
+          analyzers: successfulAnalyzers,
+        });
+      }
+    }
+
+    if (!shouldSkipGapFill) try {
       const gapFillStart = Date.now();
 
       // Compact summary of what we have so far (verbatims, triggers, demos).
@@ -1093,7 +1122,7 @@ HARD LIMITS:
           'You output STRICT JSON only. No prose, no fences unless the user asks. Be specific, concrete, and bias toward naming gaps that would meaningfully sharpen the avatar.',
         userMessage: gapPrompt,
         temperature: 0.4,
-        maxTokens: 1024,
+        maxTokens: 4096,
       });
       totalTokens.input += gapResp.tokensUsed.input;
       totalTokens.output += gapResp.tokensUsed.output;
@@ -1142,7 +1171,7 @@ HARD LIMITS:
         }
 
         const uniqueUrls = Array.from(followUpUrls).slice(0, 12);
-        const gapScraped = await scrapeMany(uniqueUrls, 4);
+        const gapScraped = await scrapeMany(uniqueUrls, 8);
 
         onProgress?.({
           phase: 'analyzing',
@@ -1217,7 +1246,7 @@ HARD LIMITS:
               systemPrefix,
               userMessage: buildAnalyzerUserMessage('searchWide', gapRawText),
               temperature: 0.3,
-              maxTokens: 6144,
+              maxTokens: 6000,
             });
             totalTokens.input += gapAnalyzerResp.tokensUsed.input;
             totalTokens.output += gapAnalyzerResp.tokensUsed.output;
@@ -1288,6 +1317,18 @@ HARD LIMITS:
         phase: 'analyzing',
         message: 'Gap-fill wave failed — continuing with first-pass data.',
       });
+    }
+
+    // Final raw-signal rebuild if source-doubling added items but gap-fill
+    // was skipped (gap-fill does its own rebuild when it runs). Avoids the
+    // previous pattern of 3 sequential rebuilds.
+    if (shouldSkipGapFill && sourceDoubledItemCount > 0) {
+      try {
+        rawSignal = buildRawSignal({
+          fetchData: fetchResult.data,
+          language: core.language,
+        });
+      } catch { /* non-fatal */ }
     }
 
     // ================================================================
@@ -1433,7 +1474,7 @@ HARD LIMITS:
           systemPrompt: advPrompt.system,
           userMessage: advPrompt.user,
           temperature: 0.3,
-          maxTokens: 4096,
+          maxTokens: 6144,
         });
         totalTokens.input += advResp.tokensUsed.input;
         totalTokens.output += advResp.tokensUsed.output;

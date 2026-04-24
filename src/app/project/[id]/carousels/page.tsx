@@ -360,7 +360,7 @@ export default function CarouselsPage() {
           <div className="text-center py-16 text-text-muted">
             <div className="text-4xl mb-4">🎠</div>
             <p className="text-lg">No carousels yet</p>
-            <p className="text-sm mt-2">Click "Generate Carousels" or "Load Demo" to get started.</p>
+            <p className="text-sm mt-2">Click &quot;Generate Carousels&quot; or &quot;Load Demo&quot; to get started.</p>
           </div>
         ) : (
           <div className="space-y-6">

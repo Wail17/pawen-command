@@ -7,6 +7,7 @@
 
 import type { Project } from '../types';
 import type { SubAvatarV2 } from '../avatars/types';
+import { buildDRInjection } from '../learning/drPrinciples';
 
 // -------- Output structure --------
 
@@ -600,8 +601,16 @@ function extractCompetitorInsights(
 
 // -------- Prompt serializer --------
 
-export function serializeCreativeContext(ctx: CreativeContext): string {
+export function serializeCreativeContext(
+  ctx: CreativeContext,
+  copyFormat?: 'advertorial' | 'native' | 'listicle' | 'skipped',
+): string {
   const sections: string[] = [];
+
+  // DR principles (hard-coded, non-negotiable) — injected for EVERY creative
+  // output regardless of copy format. Organic DR register is GLOBAL.
+  sections.push(buildDRInjection(copyFormat, { includeCreativeRules: true, includeCopyRules: false }));
+
 
   // Sub-avatar
   sections.push(`=== TARGET SUB-AVATAR: "${ctx.sub_avatar.name}" (${ctx.sub_avatar.nickname}) ===

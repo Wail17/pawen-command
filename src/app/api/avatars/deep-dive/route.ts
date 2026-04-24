@@ -25,7 +25,10 @@ import {
   buildDeepDiveUserMessage,
 } from '@/lib/avatars/enrichPrompts';
 
-export const maxDuration = 180;
+// Hobby plan caps Vercel functions at 300s. Opus deep-dive with
+// max_tokens=10000 + 7-dimension prompt regularly takes 100-220s,
+// so 180 was clipping responses. 300 = the maximum we can ask for.
+export const maxDuration = 300;
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-opus-4-6';
@@ -63,7 +66,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model: DEFAULT_MODEL,
-      max_tokens: 6144,
+      max_tokens: 10000,
       temperature: 0.7,
       system: [
         {
@@ -74,7 +77,9 @@ async function callClaude(
       ],
       messages: [{ role: 'user', content: userMessage }],
     }),
-    signal: AbortSignal.timeout(170_000),
+    // Abort 5s before the function cap so we surface a clean error
+    // instead of letting Vercel hard-kill mid-response.
+    signal: AbortSignal.timeout(290_000),
   });
 
   if (!response.ok) {

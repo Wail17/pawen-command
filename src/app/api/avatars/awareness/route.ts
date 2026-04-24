@@ -53,7 +53,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model: DEFAULT_MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
       temperature: 0.6,
       system: [
         {

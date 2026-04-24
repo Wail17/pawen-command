@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import SendToVaultButton from '@/components/swipeVault/SendToVaultButton';
+import { mapWithConcurrency } from '@/lib/util/pLimit';
 
 const CreativeFactory = dynamic(() => import('./CreativeFactory'), { ssr: false });
 
@@ -155,6 +157,7 @@ interface StaticAdStudioProps {
   onDecisionsChange: (decisions: Record<string, unknown>) => void;
   gate4Data?: Record<string, unknown>;
   gate6Data?: Record<string, unknown>;
+  project?: import('@/lib/types').Project;
 }
 
 export default function StaticAdStudio({
@@ -163,6 +166,7 @@ export default function StaticAdStudio({
   onDecisionsChange,
   gate4Data,
   gate6Data,
+  project,
 }: StaticAdStudioProps) {
   const presets = useMemo(() => extractPresets(data), [data]);
   const presetIds = useMemo(() => Object.keys(presets), [presets]);
@@ -186,7 +190,7 @@ export default function StaticAdStudio({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'flux-2-pro',
+          model: 'nano-banana-pro',
           prompt: brief.ai_generation_prompt,
           negativePrompt: brief.negative_prompt || '',
           width: format.w,
@@ -301,6 +305,7 @@ export default function StaticAdStudio({
           gate6Data={gate6Data}
           humanDecisions={humanDecisions}
           onDecisionsChange={onDecisionsChange}
+          project={project}
         />
       )}
 
@@ -380,17 +385,20 @@ export default function StaticAdStudio({
             <button
               onClick={async () => {
                 const allBriefs = Object.values(presets).flatMap(p => p.briefs || []);
+                const jobs: Array<{ brief: BriefData; fmt: typeof IMAGE_FORMATS[number] }> = [];
                 for (const briefId of pickedBriefs) {
                   const brief = allBriefs.find(b => b.id === briefId);
-                  if (brief?.ai_generation_prompt) {
-                    for (const fmt of IMAGE_FORMATS) {
-                      const key = `${brief.id}_${fmt.label}`;
-                      if (!(generatedImages[key]?.length > 0) && !generatingIds.has(key)) {
-                        await generateImage(brief, fmt);
-                      }
-                    }
+                  if (!brief?.ai_generation_prompt) continue;
+                  for (const fmt of IMAGE_FORMATS) {
+                    const key = `${brief.id}_${fmt.label}`;
+                    if ((generatedImages[key]?.length > 0) || generatingIds.has(key)) continue;
+                    jobs.push({ brief, fmt });
                   }
                 }
+                // Cap concurrent fal.ai calls at 6 — higher trips Vercel's
+                // concurrency wall and half come back 5xx. With 6 in flight,
+                // 72 images finish in ~12 batches instead of 72 sequential waits.
+                await mapWithConcurrency(jobs, 6, ({ brief, fmt }) => generateImage(brief, fmt));
               }}
               disabled={generatingIds.size > 0}
               className="w-full py-2 text-xs font-semibold bg-accent-orange text-white rounded-lg hover:bg-accent-orange-hover disabled:opacity-50 transition-colors"
@@ -454,12 +462,28 @@ export default function StaticAdStudio({
                       <p className="text-sm font-semibold text-text-primary truncate">{brief.name || brief.id}</p>
                       <p className="text-[10px] text-text-muted mt-0.5">{brief.emotional_intent}</p>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleBriefPick(brief.id); }}
-                      className={`text-lg transition-transform hover:scale-110 ${isPicked ? 'text-yellow-400' : 'text-text-muted'}`}
-                    >
-                      {isPicked ? '★' : '☆'}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <SendToVaultButton
+                        project={project}
+                        sourceGateId="gate8"
+                        draft={{
+                          imageUrl: (generatedImages[`${brief.id}-feed`] || generatedImages[`${brief.id}-story`] || [])[0],
+                          hook: selectedHeadline?.text,
+                          headline: selectedHeadline?.text,
+                          cta: brief.cta_text,
+                          format: 'static',
+                          angle: brief.emotional_intent,
+                          niche: project?.niche,
+                          awarenessLevel: project?.selectedFunnel,
+                        }}
+                      />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleBriefPick(brief.id); }}
+                        className={`text-lg transition-transform hover:scale-110 ${isPicked ? 'text-yellow-400' : 'text-text-muted'}`}
+                      >
+                        {isPicked ? '★' : '☆'}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Color palette preview */}

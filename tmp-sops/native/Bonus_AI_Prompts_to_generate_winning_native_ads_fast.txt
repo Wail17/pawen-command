@@ -1,0 +1,468 @@
+AI Prompts to generate winning native ads fast 
+
+
+
+
+
+
+
+AI is only as good as what you feed it.
+
+Give it a vague prompt, get generic copy. Give it your research, your story elements, your product details, and examples of winning ads — get copy that sounds like it was written by someone who understands your audience.
+
+This module gives you the exact template to fill out and the exact prompt to use. No guessing. No back-and-forth. One input. One output.
+
+
+
+
+
+Section 1: What AI Needs From You
+
+Four categories. All required. Skip any and the output suffers.
+
+
+
+Category
+
+What it includes
+
+Where it comes from
+
+Research
+
+6 diagnosis questions, awareness level, believability quadrant, dominant emotion, 15-20 audience language phrases
+
+Research Module
+
+Story Elements
+
+Character type, theme, inciting incident, low point, transformation, secondary characters, dialogue moments
+
+Story Elements Module
+
+Product Info
+
+What the product is, how it works (mechanism), what makes it different, proof points
+
+Your product knowledge
+
+Examples
+
+2-3 full native ads that represent the style/tone you want
+
+Swipe File Board
+
+
+
+
+
+
+
+So all the answers 
+
+
+
+Section 2: What You Should Have Ready
+
+By now, you've completed the checklists from each module. Before running the prompt, make sure you have:
+
+From Module
+
+What you need
+
+Research
+
+6 diagnosis questions answered, awareness level, believability quadrant, dominant emotion, 15-20 audience language phrases
+
+Story Elements
+
+Character type, theme, setting + inciting incident, low point, transformation, secondary characters
+
+Hooks + Closes
+
+Hook format chosen, close format chosen
+
+Your Product
+
+What it is, how it works, what makes it different, proof points, offer details
+
+Swipe File
+
+2-3 full examples copied from the board
+
+If any of these are incomplete, go back. The prompt only works if the inputs are specific.
+
+
+
+
+
+
+
+
+
+Section 3: Finding Examples
+
+We've spent hundreds of hours finding, analyzing, and saving winning native ads across different niches, character types, and awareness levels.
+
+They're al1l here: https://app.foreplay.co/share/boards/kmgyoPjhabnyItWhZDZ4
+
+This board is constantly updated. As we find new winning ads, we add them. Bookmark it. Come back to it. It grows with you.
+
+
+
+How to choose:
+
+Look for
+
+Why it matters
+
+Similar character type
+
+If you're writing an Authority ad, pick Authority examples
+
+Similar awareness level
+
+Problem aware ads look different than product aware ads
+
+Similar tone/style
+
+Serious, emotional, raw, clinical — pick examples that feel right for your brand
+
+Similar length
+
+If you want 400 words, don't pick 1000-word examples
+
+
+
+
+
+
+
+What to do:
+
+Find 2-3 ads that fit
+
+Copy the full primary text
+
+Paste into the prompt where indicated
+
+Don't skip this. Examples are what show AI the rhythm, structure, and tone you want.
+
+
+
+
+
+
+
+
+
+
+
+Section 4: The Mega Prompt
+
+Copy this entire prompt. Fill in the bracketed sections with your inputs. Run it.
+
+
+
+
+
+You are an expert direct response copywriter specializing in long-form native ads for Facebook and Instagram.
+
+
+
+I need you to write a long-form native primary text ad based on the inputs I provide below.
+
+
+
+The ad should:
+
+- Feel like a real person sharing their experience
+
+- Match the awareness level of the audience
+
+- Use the character type, theme, and story elements I specify
+
+- Sound like the examples I've provided — match their rhythm, structure, and tone
+
+
+
+---
+
+
+
+**MY RESEARCH:**
+
+
+
+Who is this for exactly:
+
+[Paste your answer]
+
+
+
+What have they already tried:
+
+[Paste your answer]
+
+
+
+What are they emotionally tired of:
+
+[Paste your answer]
+
+
+
+What do they believe is the cause:
+
+[Paste your answer]
+
+
+
+What do they believe is NOT the cause:
+
+[Paste your answer]
+
+
+
+What are they afraid to try next:
+
+[Paste your answer]
+
+
+
+Awareness level:
+
+[Paste your answer]
+
+
+
+Believability quadrant:
+
+[Paste your answer]
+
+
+
+Dominant emotion:
+
+[Paste your answer]
+
+
+
+Audience language phrases:
+
+[Paste your 15-20 phrases]
+
+
+
+---
+
+
+
+**MY STORY ELEMENTS:**
+
+
+
+Character type:
+
+[Paste your answer]
+
+
+
+Theme (the question underneath):
+
+[Paste your answer]
+
+
+
+Setting + Inciting incident:
+
+[Paste your answer]
+
+
+
+Low point:
+
+[Paste your answer]
+
+
+
+Transformation:
+
+[Paste your answer]
+
+
+
+Secondary characters + dialogue:
+
+[Paste your answer]
+
+
+
+---
+
+
+
+**MY PRODUCT:**
+
+
+
+What is the product:
+
+[Paste your answer]
+
+
+
+How it works (mechanism):
+
+[Paste your answer]
+
+
+
+What makes it different:
+
+[Paste your answer]
+
+
+
+Proof points:
+
+[Paste your answer]
+
+
+
+Offer details:
+
+[Paste your answer]
+
+
+
+---
+
+
+
+**EXAMPLES TO MATCH:**
+
+
+
+Here are 2-3 native ads that represent the style, tone, and structure I want you to follow:
+
+
+
+EXAMPLE 1:
+
+[Paste full ad text]
+
+
+
+EXAMPLE 2:
+
+[Paste full ad text]
+
+
+
+EXAMPLE 3 (optional):
+
+[Paste full ad text]
+
+
+
+---
+
+
+
+**INSTRUCTIONS:**
+
+
+
+1. Write the full native ad (300-600 words)
+
+2. Use the hook format I specified
+
+3. Include the story elements I provided
+
+4. Use audience language phrases naturally throughout
+
+5. End with the close format I specified
+
+6. Match the tone and rhythm of my examples
+
+
+
+Write the ad now.
+
+
+
+
+
+
+
+
+
+Section 5: Refining the Output
+
+First draft won't be perfect. Use these follow-up prompts to improve.
+
+
+
+Problem
+
+Follow-up prompt
+
+Hook is weak or generic
+
+"Rewrite the hook using the [format name] format more clearly. Make it more specific and visceral."
+
+Low point doesn't hit hard enough
+
+"Expand the low point. Make it more specific. Include resignation, not just frustration. Use sensory details."
+
+Transformation feels vague
+
+"Make the transformation more progressive — show what changed week 1, week 2, week 3. Add unexpected discoveries."
+
+Dialogue sounds fake
+
+"Rewrite the dialogue to sound like real speech. Short. Fragments. How people actually talk."
+
+Close feels salesy
+
+"Rewrite the close to feel more natural. Connect back to the hook. Add risk reversal and permission."
+
+Doesn't sound like examples
+
+"Match the rhythm and tone of my examples more closely. Shorter sentences. More contrast. More specificity."
+
+Too long
+
+"Cut this to [X] words. Keep the hook, low point, transformation, and close. Tighten the mechanism section."
+
+Too short
+
+"Expand this to [X] words. Add more detail to the low point and transformation. Add a secondary character with dialogue."
+
+
+
+Before You Run the Prompt
+
+You should have:
+
+☐ All research inputs filled out — not skipped, not vague
+
+☐ All story element inputs filled out — specific, not generic
+
+☐ Hook and close formats chosen
+
+☐ Product info complete — mechanism, differentiation, proof
+
+☐ 2-3 full examples copied from swipe file board
+
+☐ Examples match the style, tone, and length you want
+
+
+
+
+
+
+
+
+

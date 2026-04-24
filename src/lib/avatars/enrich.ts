@@ -18,7 +18,14 @@ import type {
   AwarenessLevel,
   AwarenessVariant,
   DeepDiveResult,
+  MarketSophistication,
 } from './types';
+
+export interface AwarenessClassification {
+  recommended_awareness_level: AwarenessLevel;
+  recommended_awareness_reason: string;
+  market_sophistication: MarketSophistication;
+}
 
 export async function generateAwarenessVariant(params: {
   core: CoreAvatarInput;
@@ -93,6 +100,45 @@ export function appendDeepDive(
     ...subAvatar,
     deep_dives: [...(subAvatar.deep_dives ?? []), dive],
   };
+}
+
+// Backfill the awareness + sophistication classification onto an OLD
+// sub-avatar that was generated before these fields existed. Caller
+// passes the result of generateAwarenessClassification(); we return
+// a new sub-avatar with the three fields populated.
+export function applyAwarenessClassification(
+  subAvatar: SubAvatarV2,
+  classification: AwarenessClassification,
+): SubAvatarV2 {
+  return {
+    ...subAvatar,
+    recommended_awareness_level: classification.recommended_awareness_level,
+    recommended_awareness_reason: classification.recommended_awareness_reason,
+    market_sophistication: classification.market_sophistication,
+  };
+}
+
+export async function generateAwarenessClassification(params: {
+  core: CoreAvatarInput;
+  subAvatar: SubAvatarV2;
+}): Promise<AwarenessClassification> {
+  const res = await fetch('/api/avatars/classify', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    classification?: AwarenessClassification;
+    message?: string;
+  };
+
+  if (!res.ok || !data.ok || !data.classification) {
+    throw new Error(data.message ?? `Classify call failed (${res.status})`);
+  }
+  return data.classification;
 }
 
 // Pretty label for the awareness chip UI

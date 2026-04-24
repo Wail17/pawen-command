@@ -12,6 +12,13 @@ import {
   getGoldOutputsForGate,
 } from '../store/db';
 import type { Project, GateOutput } from '../types';
+import { getPersonaForGate } from '../agents/personas';
+import {
+  isAutoConstitutionEnabled,
+  isAutonomousModeEnabled,
+  getConstitutionRefreshEvery,
+} from './autonomousMode';
+import { bumpConstitutionCounter, updateAgentConstitution } from './constitution';
 
 let idCounter = 0;
 function generateId(): string {
@@ -141,6 +148,22 @@ export async function captureFromApproval(params: {
 
   // Update profile
   await updateProfileFromApproval();
+
+  // Phase U.2 — bump the constitution-refresh counter for the lead persona.
+  // When the threshold crosses AND both autonomous flags are on, fire-and-
+  // forget a constitution recompile. Fully non-blocking; silent on failure.
+  try {
+    if (isAutonomousModeEnabled() && isAutoConstitutionEnabled()) {
+      const leadPersona = getPersonaForGate(gateId);
+      const threshold = getConstitutionRefreshEvery();
+      const shouldRefresh = bumpConstitutionCounter(leadPersona.id, threshold);
+      if (shouldRefresh) {
+        void updateAgentConstitution(leadPersona.id).catch(() => { /* best-effort */ });
+      }
+    }
+  } catch {
+    /* never break the approval flow */
+  }
 
   return captured;
 }

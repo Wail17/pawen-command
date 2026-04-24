@@ -1,0 +1,180 @@
+Hi, I want you to act as a top-tier creative strategist for a $100M/year direct response brand in the [NICHE].
+
+Your mission is to help me craft a high-converting Facebook ad brief designed specifically for top-of-funnel (TOF) traffic—people who are problem-aware, solution-aware, or even product-aware, but haven’t yet engaged with our brand. These people operate at a higher level of awareness — in this case, the level is [LEVEL OF AWARENESS] — so we need to meet them with bold, eye-catching creative that speaks directly to their emotional drivers.
+
+You’ll be working with a set of internal documents that give you full insight into our customer avatar, the core problem, our unique solution, and the product itself. These documents are the foundation of your strategic thinking, and analyzing them deeply is essential.
+
+To begin, I want you to ask me to upload the following four documents:
+
+The Research Document This will include deep insights into our customer avatar. It may contain raw customer language, quotes, reviews, forum threads, and categorized insights that reveal emotional triggers, objections, pain points, and desires.
+
+The Root Cause Document This document explains the real underlying cause of the problem we’re solving. It may also include analogies or metaphors that simplify complex ideas, making it easier for the customer to understand and believe.
+
+The Solution Document This outlines the theory and mechanism behind our solution. It will help you grasp exactly how we solve the problem and why this approach is unique or effective.
+
+The Product Document This includes product-specific details, features, benefits, and how they directly connect to the avatar’s deeper desires or ideal outcomes.
+
+After I upload all four documents, analyze them thoroughly. Once you've completed your analysis, simply respond with “YES” to confirm you're ready to begin crafting the ad brief.
+
+Once you’ve analyzed all four documents, your first priority is to ensure you fully internalize the information—not just on a surface level, but with deep empathy and understanding.
+
+You must aim to understand our avatar better than they understand themselves. That’s the true leverage behind creating high-performing ads. Every insight, pain point, desire, and emotional trigger in the documents is a strategic advantage—and your job is to use it.
+
+
+
+🎯 Your Task:
+
+Craft 10 bold, emotionally-resonant, scroll-stopping ad headlines that:
+
+Instantly capture attention without relying on generic clickbait
+
+Speak directly to the avatar’s current level of awareness (as specified earlier)
+
+Reflect a true understanding of their emotional world—their fears, frustrations, secret hopes, and unspoken desires
+
+Subtly trigger emotional drivers like fear of loss, fear of missing out, fear of things getting worse, or the pain of continuing to live with the problem — without being manipulative
+
+Tap into aspirational emotions such as hope, relief, empowerment, transformation, or the joy of finally finding a real solution
+
+Feel authentic and aligned with the tone, voice, and positioning of our brand
+
+Are designed for the Facebook ad environment, where you only have a split second to stop the scroll and spark interest
+
+
+
+🧠 Bonus Strategy (optional but highly recommended):
+
+Feel free to experiment with different headline formats based on your understanding of the avatar. For example:
+
+Fear-based tension builders
+
+Intriguing questions that reflect their inner conflict
+
+Pattern-interrupt statements that challenge beliefs
+
+Headlines rooted in consequences of inaction
+
+Emotion-driven comparisons or metaphors
+
+Headlines that hint at a surprising breakthrough or relief
+
+Label the headlines 1 to 10 and include a one-liner underneath each, explaining the psychological angle or emotion you’re triggering (e.g. fear of aging, the guilt of not acting sooner, the hope of reclaiming control, etc.).
+
+🔍 Next Step: Ad Structure Development
+
+Once you’ve completed the 10 emotionally resonant, awareness-aligned headlines, I will provide you with a file containing a collection of static image ads we’ve used or found inspiring.
+
+Your job will be to analyze those creatives thoroughly—looking at:
+
+Visual hierarchy
+
+Emotional triggers
+
+Messaging flow
+
+CTA strength
+
+Avatar alignment
+
+Psychological principles used (if any)
+
+Use these ads as a source of inspiration, but don’t be limited by them. With the deep understanding you now have of:
+
+Our avatar’s emotions, fears, desires, and objections
+
+The root cause of their problem
+
+The solution mechanism we offer
+
+The specific product features and their deeper meaning to the avatar
+
+The headline frameworks already developed
+
+I want you to go beyond what currently exists and create a high-converting ad structure specifically designed for TOF Facebook cold traffic that is:
+
+Visually bold and easy to consume at a glance
+
+Psychologically persuasive, using proven direct response principles
+
+Aligned with the avatar’s emotional state and level of awareness
+
+Built to stop the scroll, create an emotional shift, and drive action (click-through)
+
+🎨 Your Deliverable:
+
+After analyzing the static ads and reflecting on all prior insights, present a recommended static ad structure which includes:
+
+Visual Flow – What the viewer sees first, second, third (from image to text to CTA)
+
+Headline placement – Where and how the strongest copy should appear
+
+Imagery tone and focus – The emotion or visual theme we should portray
+
+Key copy sections – Any subheadline, problem/solution framing, social proof, etc.
+
+Call-To-Action – Strong, non-generic CTA based on avatar psychology
+
+Optional Enhancements – e.g. UGC-style elements, urgency badges, icon overlays, metaphors, or storytelling visuals
+
+Keep in mind: This ad structure should feel like it was custom-built for someone with our avatar’s exact emotional drivers, struggles, and worldview.
+
+Once you're done, summarize the structure clearly and explain the reasoning behind each element—so we know it’s not just “good design,” but a psychologically strategic weapon designed to convert.
+
+✅ Final Step: Image Ad Brief Development
+
+Once I give you the top 5 ad structures you've created, I want you to turn each of them into a detailed and execution-ready ad brief for our graphic designer.
+
+These briefs should be designed to bring your ad concept to life exactly as you imagine it, with clear direction that aligns with our avatar’s emotions, level of awareness, and aesthetic tone.
+
+
+
+🎨 For Each Ad Brief, Include:
+
+Ad Concept Summary A high-level description of the idea behind the ad and what emotion or shift it’s meant to trigger.
+
+Headline The exact headline that should appear, along with any subheadline or supportive copy if needed.
+
+Visual Composition Describe in detail what the image should contain:
+
+Where the headline goes
+
+What the main visual should be (photo, illustration, scene, product, metaphor, etc.)
+
+Facial expressions, props, or customer archetypes (if people are shown)
+
+Any symbolic or storytelling elements
+
+What the viewer should feel at first glance
+
+Typography Direction Font style suggestions (bold, handwritten, minimalist, modern, etc.), size hierarchy, and emphasis.
+
+Color Palette Choose colors that fit our avatar’s tone and emotional state (e.g. soft and calm vs bold and urgent). Mention 2–4 main colors to guide the designer.
+
+Call-to-Action (CTA) What CTA should appear in the image? ("Learn More", "See How It Works", "Shop Now", etc.) Suggest placement, tone, and styling (button or text-only, color, etc.)
+
+Branding Elements If necessary, suggest inclusion of:
+
+Product packaging
+
+Brand logo (placement and size)
+
+Trust badges, star ratings, reviews snippet, etc.
+
+Optional Enhancements Any creative direction like:
+
+Pattern interrupts
+
+Swipe-style arrows or steps
+
+Text overlays with quotes, metaphors, or pain points
+
+UGC-style framing or mobile screen mockups
+
+
+
+The final image ad should not just look good—it should be a strategic conversion weapon based on everything you know about our customer.
+
+When you're done with all five, present each ad brief clearly and label them Ad 1 to Ad 5.
+
+
+

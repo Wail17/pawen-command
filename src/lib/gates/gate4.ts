@@ -20,7 +20,7 @@ const gate4: GateConfigDef = {
       name: 'Customer Language Extractor (ZAK Part 1)',
       model: 'opus',
       temperature: 0.7,
-      maxTokens: 12000,
+      maxTokens: 24000,
       systemPrompt: (project, previousOutputs) => {
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
 
@@ -155,7 +155,7 @@ RULES:
       model: 'opus',
       dependsOn: ['customer-language-extractor'],
       temperature: 0.85,
-      maxTokens: 16000,
+      maxTokens: 12000,
       systemPrompt: (project, previousOutputs) => {
         const brandDNA = project.brandDNA;
         const g2 = previousOutputs['gate2'] as Record<string, unknown> | undefined;
@@ -226,11 +226,11 @@ ${g2 ? `\n=== AVATAR DEEP DIVE (Gate 2) — sub-avatars, angles, quote bank, voi
 ${g3 ? `\n=== ROOT CAUSE & MECHANISM (Gate 3) — root cause, belief error, mechanism ===\n${JSON.stringify(g3, null, 2).slice(0, 3000)}` : ''}
 ${g1 ? `\n=== PRODUCT INTELLIGENCE (Gate 1) — features, benefits, buyer psychology ===\n${JSON.stringify(g1, null, 2).slice(0, 3000)}` : ''}
 
-## MISSION: Turn extracted customer language into 70+ hooks using 7 ZAK formulas
+## MISSION: Turn extracted customer language into EXACTLY 30 elite hooks using 7 ZAK formulas
 
-IMPORTANT: The Customer Language Extraction above contains 70 pre-mined phrases across 7 categories (micro-specific moments, internal dialogue, relationship moments, humiliation moments, failed solutions, transformation language, trigger phrases) + top 10 ranked phrases. USE THESE as your primary hook ammunition. The top 10 phrases should appear in your top 20 scored hooks.
+IMPORTANT: The Customer Language Extraction above contains 70 pre-mined phrases across 7 categories. USE THESE as your primary hook ammunition. The top 10 phrases should appear in your top 20 scored hooks.
 
-Focus on the SELECTED SUB-AVATAR (the one provided in Strategic Context above). Generate hooks for this ONE avatar across its top 3 angles × ALL 7 formulas × 3-4 variations = 70+ hooks minimum.
+Focus on the SELECTED SUB-AVATAR. Generate EXACTLY 30 hooks — quality over quantity. Cover all 7 ZAK formulas across the avatar's top 3 angles. The user can request +20 more hooks later on-demand, so make these 30 the BEST 30, not a dump.
 
 For each hook, provide the full 3 First Lines (hook, anchor, open loop).
 
@@ -320,7 +320,7 @@ Output valid JSON:
 }
 
 RULES:
-- MINIMUM 105 hooks (5 avatars × 3 angles × 7 formulas)
+- EXACTLY 30 hooks — elite quality, not volume. User can request +20 more on demand.
 - All hooks in TARGET LANGUAGE + source language
 - NEVER use cliche marketing phrases ("revolutionary", "game-changer", "secret", "doctors don't want you to know")
 - Every hook references REAL data from Gates 1-3 and Brand DNA
@@ -807,6 +807,13 @@ RULES:
     },
   ],
 
+  // Lead compiler emits ONLY strategic layer (top_20 re-ranked, cross-section
+  // combos, gap analysis, arsenal_summary). Sub-agent sections (CLB, full hook
+  // list, loops, sensory, future pacing, brigades, takeaway) are auto-merged
+  // from sub-agent outputs via runGate backfill. Opus caps at 32k output —
+  // re-emitting 60k+ tokens was truncating JSON mid-stream.
+  generatorMaxTokens: 16000,
+
   // --- LEAD AGENT: Compile, organize, score top hooks ---
   generatorPrompt: (project, subAgentOutputs) => {
     if (!subAgentOutputs || Object.keys(subAgentOutputs).length === 0) {
@@ -819,18 +826,17 @@ TARGET LANGUAGE: ${project.targetLanguage}`;
 
     return `You are the Lead Copy Strategist at a $100M/year direct response agency. Your team of 7 specialists has produced their work in a 2-phase chain:
 - Phase 1: Customer Language Extraction (70 raw phrases from avatar deep dive)
-- Phase 2: Hook Crafting (105+ hooks built FROM the extracted language) + 5 parallel specialists (open loops, sensory, future pacing, bucket brigades, takeaway)
+- Phase 2: Hook Crafting (30 elite hooks (expandable on-demand) built FROM the extracted language) + 5 parallel specialists (open loops, sensory, future pacing, bucket brigades, takeaway)
 
-Your job: COMPILE them into a single, organized Copy Arsenal.
+Your job: produce the STRATEGIC LAYER on top of their work — NOT re-emit it.
 
-CRITICAL RULES:
-1. Do NOT throw away specialist work — integrate ALL of it
-2. The customer language extraction is AMMUNITION — verify hooks actually USE those phrases
-3. Organize hooks BY SUB-AVATAR for easy access
-4. Verify the top 20 hook scores make sense — re-rank if needed
-5. Cross-reference: do open loops pair well with hooks? Do sensory descriptions match future pacing scenes?
-6. Flag any gaps: missing sub-avatar coverage, weak categories, voice inconsistencies
-7. Add a STRATEGIC SUMMARY: which pieces are strongest, recommended combinations, and which sub-avatar has the richest arsenal
+CRITICAL: DO NOT re-emit customer_language_bank, the full hook_bank, open_loops, sensory_language, future_pacing, bucket_brigades, or takeaway_copy. Those specialist sections are auto-merged into the final arsenal from the sub-agent outputs directly. If you try to re-emit them your output will truncate and the arsenal will be lost.
+
+Your job:
+1. Re-rank the top 20 hooks across ALL specialists (cite hook text + which sub-avatar + score)
+2. Identify the strongest cross-section pairings (hook ID + open loop ID + sensory scene that stack together)
+3. Flag gaps (missing sub-avatar coverage, weak formulas, voice drift between specialists)
+4. Strategic summary — strongest/weakest sub-avatar, readiness for Gates 5-8
 
 OUTPUT LANGUAGE: All copy in both ${project.sourceLanguage} and ${project.targetLanguage}.`;
   },
@@ -849,7 +855,7 @@ OUTPUT LANGUAGE: All copy in both ${project.sourceLanguage} and ${project.target
 === CUSTOMER LANGUAGE EXTRACTION (70 phrases, 7 categories — Phase 1) ===
 ${subAgentOutputs['customer-language-extractor'] || 'N/A'}
 
-=== HOOK CRAFTER (105+ hooks from extracted language — Phase 2) ===
+=== HOOK CRAFTER (30 elite hooks (expandable on-demand) from extracted language — Phase 2) ===
 ${subAgentOutputs['hook-generator'] || 'N/A'}
 
 === OPEN LOOP WRITER (50 loops, 5 categories) ===
@@ -867,70 +873,22 @@ ${subAgentOutputs['bucket-brigade'] || 'N/A'}
 === TAKEAWAY COPY (25 blocks, 5 categories) ===
 ${subAgentOutputs['takeaway-writer'] || 'N/A'}
 
-Compile into a single unified JSON wrapped in \`\`\`json code blocks:
+Produce ONLY the strategic layer as JSON wrapped in \`\`\`json code blocks. Do NOT re-emit specialist sections — they will be auto-merged from sub-agent outputs. If you try to include them you will truncate and lose everything.
+
 {
-  "customer_language_bank": {
-    "micro_specific_moments": [...top phrases...],
-    "internal_dialogue": [...],
-    "relationship_moments": [...],
-    "humiliation_moments": [...],
-    "failed_solution_language": [...],
-    "transformation_language": [...],
-    "trigger_phrases": [...],
-    "top_10_phrases": [...ranked by hook potential...],
-    "total_extracted": 70
-  },
-  "hook_bank": {
-    "hook_matrix": [...organized by sub-avatar...],
-    "top_20_scored": [...re-verified rankings — verify top 10 customer phrases appear...],
-    "hooks_by_formula": { "question": 0, "statement": 0, "story": 0, "statistic": 0, "contradiction": 0, "curiosity": 0, "identity": 0 },
-    "total_hooks_generated": 0
-  },
-  "open_loops": {
-    "mystery": [...],
-    "contradiction": [...],
-    "personal_revelation": [...],
-    "social_proof": [...],
-    "time_bomb": [...]
-  },
-  "sensory_language": {
-    "sight": { "pain": [...], "transformation": [...] },
-    "sound": { "pain": [...], "transformation": [...] },
-    "touch": { "pain": [...], "transformation": [...] },
-    "smell": { "pain": [...], "transformation": [...] },
-    "taste": { "pain": [...], "transformation": [...] },
-    "sensory_phrases_bank": [...]
-  },
-  "future_pacing": [...3 scenes...],
-  "bucket_brigades": {
-    "curiosity": [...],
-    "empathy": [...],
-    "authority": [...],
-    "urgency": [...],
-    "transition": [...],
-    "contrast": [...],
-    "story": [...]
-  },
-  "takeaway_copy": {
-    "not_for_everyone": [...],
-    "qualification": [...],
-    "disqualification": [...],
-    "scarcity": [...],
-    "not_ready": [...]
-  },
+  "top_20_hooks": [
+    { "rank": 1, "hook": "...exact hook text...", "sub_avatar": "...", "formula": "question|statement|story|statistic|contradiction|curiosity|identity", "source_specialist": "hook-generator", "score": 0, "why_top": "1 sentence" }
+  ],
+  "recommended_hook_loop_combos": [
+    { "hook_ref": "...hook text or id...", "open_loop_ref": "...loop text or id...", "sensory_scene_ref": "optional", "why_it_stacks": "1 sentence" }
+  ],
+  "gaps_identified": ["..."],
   "arsenal_summary": {
-    "total_hooks": 0,
-    "total_open_loops": 50,
-    "total_sensory_examples": 50,
-    "total_sensory_phrases": 20,
-    "total_future_pacing_scenes": 3,
-    "total_bucket_brigades": 70,
-    "total_takeaway_blocks": 25,
-    "strongest_sub_avatar": "which sub-avatar has the richest copy arsenal",
-    "weakest_sub_avatar": "which needs more work",
-    "recommended_hook_loop_combos": ["hook ID + open loop ID that pair well together"],
-    "gaps_identified": ["any missing coverage or weak areas"],
-    "strategic_notes": "overall assessment of arsenal readiness for Gates 5-8"
+    "strongest_sub_avatar": "...",
+    "weakest_sub_avatar": "...",
+    "voice_consistency": "high|medium|low + 1 line note",
+    "readiness_for_gate_5_8": "ready|needs_revision + 1 line note",
+    "strategic_notes": "2-3 sentences max"
   }
 }`;
   },
@@ -942,7 +900,7 @@ ${EVOLVE_COHERENCE_CHAIN}
 ${EVOLVE_EXECUTION_FRAMEWORK}
 
 DIMENSIONS (each /10, total /100, threshold >=75%):
-1. Hook Volume & Coverage: >=105 hooks? All 5 sub-avatars x angles x 7 formulas represented? No gaps?
+1. Hook Volume & Coverage: >=30 elite hooks (quality focus)? All 7 formulas represented for the selected sub-avatar?
 2. Hook Formula Mastery: Each of the 7 formula types used correctly? No formula confusion? Variety within each formula?
 3. Customer Language Fidelity: Hooks sound like real people, not ads? Verbatim language from Gate 2 quote bank used? Voice profile matched? EXACT sub-avatar names used (not renamed)?
 4. EVOLVE Scorecard + ZAK Specificity: Top 20 scored honestly? Reptilian triggers identified correctly? Attention hierarchy applied? 3 First Lines evaluated? 3 Hook Requirements met? Every top-20 hook scores 4+ on 7 Types of Specificity (numerical/temporal/sensory/emotional/identity/outcome/process)? Hook stacking present (visual+text+audio)?

@@ -8,6 +8,12 @@ import {
   type FactoryHeadline,
   type FactoryCombo,
 } from '@/lib/gates/creativeFactory';
+import { parseStudioConcepts, type StudioConcept } from '@/lib/gates/creaStudioParser';
+import { buildCreaStudioPrompt, type CreaStyle } from '@/lib/prompts/creaStudio';
+import { getAllGateOutputs } from '@/lib/store/db';
+import type { Project, GateOutput } from '@/lib/types';
+import SendToVaultButton from '@/components/swipeVault/SendToVaultButton';
+import { mapWithConcurrency } from '@/lib/util/pLimit';
 
 const PRESET_IDS = [
   'before_after', 'feature_highlight', 'lifestyle_context', 'problem_agitation',
@@ -31,6 +37,12 @@ const FORMAT_OPTIONS = [
   { id: 'vertical_4x5', label: 'Vertical 4:5', short: '4:5' },
 ] as const;
 
+const FORMAT_DIMS: Record<string, { w: number; h: number }> = {
+  feed_1x1: { w: 1080, h: 1080 },
+  story_9x16: { w: 1080, h: 1920 },
+  vertical_4x5: { w: 1080, h: 1350 },
+};
+
 const SOURCE_COLORS: Record<string, string> = {
   zak: 'bg-purple-500/20 text-purple-400',
   evolve: 'bg-accent-orange/20 text-accent-orange',
@@ -53,6 +65,7 @@ interface Props {
   gate6Data?: Record<string, unknown>;
   humanDecisions: Record<string, unknown>;
   onDecisionsChange: (decisions: Record<string, unknown>) => void;
+  project?: Project;
 }
 
 export default function CreativeFactory({
@@ -61,6 +74,7 @@ export default function CreativeFactory({
   gate6Data,
   humanDecisions,
   onDecisionsChange,
+  project,
 }: Props) {
   // ---- Headline extraction ----
   const allHeadlines = useMemo(
@@ -87,6 +101,15 @@ export default function CreativeFactory({
   const abortRef = useRef(false);
   const factoryImages = (humanDecisions?.factoryImages ?? {}) as Record<string, string[]>;
   const factoryPicked = (humanDecisions?.factoryPicked ?? []) as string[];
+
+  // ---- Studio Waves state (ZAK / EVOLVE concepts with their own image prompts) ----
+  const studioConcepts = (humanDecisions?.factoryStudioConcepts ?? []) as StudioConcept[];
+  const studioImages = (humanDecisions?.factoryStudioImages ?? {}) as Record<string, string[]>;
+  const headlineChoices = (humanDecisions?.factoryHeadlineChoice ?? {}) as Record<string, string>;
+  const [runningWave, setRunningWave] = useState<CreaStyle | null>(null);
+  const [waveError, setWaveError] = useState<string | null>(null);
+  const [generatingConceptIds, setGeneratingConceptIds] = useState<Set<string>>(new Set());
+  const [studioFormats, setStudioFormats] = useState<Set<string>>(() => new Set(['feed_1x1']));
 
   // ---- Filtered headlines ----
   const filteredHeadlines = useMemo(() => {
@@ -174,7 +197,7 @@ export default function CreativeFactory({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'flux-2-pro',
+          model: 'nano-banana-pro',
           prompt: combo.prompt,
           negativePrompt: combo.negativePrompt,
           width: combo.width,
@@ -190,6 +213,129 @@ export default function CreativeFactory({
       return null;
     }
   }, []);
+
+  // ---- Studio wave: run ZAK or EVOLVE prompt, parse concepts, append to humanDecisions ----
+  const runWave = useCallback(async (style: CreaStyle) => {
+    if (!project) {
+      setWaveError('Project not loaded — cannot run wave');
+      return;
+    }
+    setRunningWave(style);
+    setWaveError(null);
+    try {
+      const allOutputs = await getAllGateOutputs(project.id);
+      const previousOutputs: Record<string, unknown> = {};
+      for (const o of allOutputs) {
+        if (o && typeof o === 'object' && 'gateId' in o && 'data' in o) {
+          const go = o as GateOutput;
+          previousOutputs[go.gateId] = go.data;
+        }
+      }
+      const { systemPrompt, userMessage, model, maxTokens } = buildCreaStudioPrompt(style, project, previousOutputs);
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, systemPrompt, userMessage, maxTokens, temperature: 0.8, stream: false }),
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`));
+      const data = await res.json();
+      const markdown: string = data.text ?? data.content ?? data.output ?? '';
+      const parsedStyle: 'zak' | 'evolve' = style === 'niche_dr' ? 'zak' : 'evolve';
+      const concepts = parseStudioConcepts(markdown, parsedStyle);
+      if (concepts.length === 0) {
+        setWaveError(`${parsedStyle.toUpperCase()} wave: no concepts parsed from output. Check that the JSON block was returned.`);
+        return;
+      }
+      const next = [...studioConcepts, ...concepts];
+      onDecisionsChange({ ...humanDecisions, factoryStudioConcepts: next });
+    } catch (e) {
+      setWaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunningWave(null);
+    }
+  }, [project, studioConcepts, humanDecisions, onDecisionsChange]);
+
+  const deleteConcept = useCallback((conceptId: string) => {
+    const next = studioConcepts.filter(c => c.id !== conceptId);
+    const nextImages = { ...studioImages };
+    delete nextImages[conceptId];
+    const nextChoices = { ...headlineChoices };
+    delete nextChoices[conceptId];
+    onDecisionsChange({
+      ...humanDecisions,
+      factoryStudioConcepts: next,
+      factoryStudioImages: nextImages,
+      factoryHeadlineChoice: nextChoices,
+    });
+  }, [studioConcepts, studioImages, headlineChoices, humanDecisions, onDecisionsChange]);
+
+  const pickHeadline = useCallback((conceptId: string, headline: string) => {
+    onDecisionsChange({
+      ...humanDecisions,
+      factoryHeadlineChoice: { ...headlineChoices, [conceptId]: headline },
+    });
+  }, [humanDecisions, headlineChoices, onDecisionsChange]);
+
+  const toggleStudioFormat = useCallback((id: string) => {
+    setStudioFormats(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.size === 0) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const generateStudioImage = useCallback(async (concept: StudioConcept, formatId: string): Promise<string | null> => {
+    const dims = FORMAT_DIMS[formatId];
+    if (!dims) return null;
+    try {
+      const res = await fetch('/api/imagegen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'nano-banana-pro',
+          prompt: concept.imagePrompt,
+          negativePrompt: 'text overlay, watermark, logo, blurry, deformed, low quality, amateur',
+          width: dims.w,
+          height: dims.h,
+          numImages: 1,
+        }),
+      });
+      if (!res.ok) return null;
+      const result = await res.json();
+      const urls = (result.images || []).map((img: { url: string }) => img.url);
+      return urls[0] ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const generateForConcept = useCallback(async (concept: StudioConcept) => {
+    setGeneratingConceptIds(prev => new Set([...prev, concept.id]));
+    const fmts = Array.from(studioFormats);
+    const urls: string[] = [];
+    for (const fmt of fmts) {
+      const url = await generateStudioImage(concept, fmt);
+      if (url) urls.push(url);
+    }
+    if (urls.length > 0) {
+      const prev = studioImages[concept.id] ?? [];
+      const next = { ...studioImages, [concept.id]: [...urls, ...prev] };
+      onDecisionsChange({ ...humanDecisions, factoryStudioImages: next });
+    }
+    setGeneratingConceptIds(prev => {
+      const n = new Set(prev);
+      n.delete(concept.id);
+      return n;
+    });
+  }, [studioFormats, studioImages, humanDecisions, onDecisionsChange, generateStudioImage]);
+
+  const generateAllConcepts = useCallback(async () => {
+    const pending = studioConcepts.filter(c => !(studioImages[c.id]?.length > 0));
+    // Cap at 4 concurrent — generateForConcept itself generates N formats per
+    // concept, so 4 concepts × ~2 formats = 8 simultaneous fal.ai calls max.
+    await mapWithConcurrency(pending, 4, (c) => generateForConcept(c));
+  }, [studioConcepts, studioImages, generateForConcept]);
 
   const launchFactory = useCallback(async () => {
     abortRef.current = false;
@@ -256,6 +402,73 @@ export default function CreativeFactory({
               <p className="text-[10px] text-text-muted">
                 {allHeadlines.length} headlines &middot; {estimate} combos
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ============ CREATIVE WAVES ============ */}
+        <div className="px-4 py-3 border-b border-border bg-gradient-to-b from-purple-500/5 to-transparent">
+          <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">
+            🌊 Creative Waves
+          </h4>
+          <p className="text-[10px] text-text-muted mb-2 leading-snug">
+            Chaque wave génère des concepts d&apos;image distincts depuis TES données (avatars, verbatims, mechanism, brand DNA).
+          </p>
+          <div className="space-y-1.5">
+            <button
+              onClick={() => runWave('niche_dr')}
+              disabled={!project || runningWave !== null}
+              className="w-full py-2 text-xs font-semibold bg-purple-500/15 border border-purple-500/40 text-purple-300 rounded-lg hover:bg-purple-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {runningWave === 'niche_dr' ? '⏳ Running ZAK...' : '🎯 Wave ZAK (Niche DR) — +5 concepts'}
+            </button>
+            <button
+              onClick={() => runWave('big_brand')}
+              disabled={!project || runningWave !== null}
+              className="w-full py-2 text-xs font-semibold bg-accent-teal/15 border border-accent-teal/40 text-accent-teal rounded-lg hover:bg-accent-teal/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {runningWave === 'big_brand' ? '⏳ Running EVOLVE...' : '🎨 Wave EVOLVE (Big Brand) — +9 concepts'}
+            </button>
+          </div>
+          {waveError && (
+            <div className="mt-2 text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded p-2">
+              {waveError}
+            </div>
+          )}
+          {studioConcepts.length > 0 && (
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-[10px] text-text-muted">
+                {studioConcepts.length} concept{studioConcepts.length > 1 ? 's' : ''} stacked
+              </p>
+              <button
+                onClick={generateAllConcepts}
+                disabled={generatingConceptIds.size > 0}
+                className="text-[10px] px-2 py-1 bg-accent-orange/20 text-accent-orange rounded hover:bg-accent-orange/30 disabled:opacity-40"
+              >
+                Generate All Images
+              </button>
+            </div>
+          )}
+          {/* Studio format selector */}
+          <div className="mt-2">
+            <p className="text-[10px] text-text-muted mb-1">Formats for Wave images:</p>
+            <div className="flex gap-1">
+              {FORMAT_OPTIONS.map(fmt => {
+                const active = studioFormats.has(fmt.id);
+                return (
+                  <button
+                    key={fmt.id}
+                    onClick={() => toggleStudioFormat(fmt.id)}
+                    className={`flex-1 py-1 rounded text-[10px] font-medium transition-colors ${
+                      active
+                        ? 'bg-accent-orange/20 border border-accent-orange/40 text-accent-orange'
+                        : 'bg-bg-primary border border-border text-text-muted'
+                    }`}
+                  >
+                    {fmt.short}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -435,11 +648,150 @@ export default function CreativeFactory({
 
       {/* ============ MAIN CONTENT — Results Grid ============ */}
       <div className="flex-1 overflow-y-auto">
-        {combos.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-text-muted text-sm">
-            Select headlines, presets and formats to see combinations
+        {/* ============ STUDIO CONCEPTS (ZAK / EVOLVE waves) ============ */}
+        {studioConcepts.length > 0 && (
+          <div className="p-4 border-b border-border">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary">🌊 Studio Concepts ({studioConcepts.length})</h3>
+                <p className="text-[10px] text-text-muted">Unique image ideas from ZAK / EVOLVE — each with its own visual prompt</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {studioConcepts.map(concept => {
+                const imgs = studioImages[concept.id] ?? [];
+                const isGen = generatingConceptIds.has(concept.id);
+                const chosenHeadline = headlineChoices[concept.id] ?? concept.headline;
+                const headlineOptions = [concept.headline, ...concept.variations];
+                const isPicked = factoryPicked.includes(concept.id);
+                const activeChipClass = concept.style === 'zak'
+                  ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                  : 'bg-accent-teal/20 border-accent-teal/50 text-accent-teal';
+                return (
+                  <div
+                    key={concept.id}
+                    className={`bg-bg-card border rounded-xl overflow-hidden transition-all ${
+                      isPicked ? 'border-yellow-400 shadow-md shadow-yellow-400/10' : 'border-border hover:border-accent-teal/40'
+                    }`}
+                  >
+                    {/* Image */}
+                    <div className="relative bg-bg-primary aspect-square">
+                      {imgs.length > 0 ? (
+                        <img src={imgs[0]} alt="" className="w-full h-full object-cover" />
+                      ) : isGen ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="w-6 h-6 border-2 border-accent-orange border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center p-4 text-center">
+                          <span className="text-[10px] text-text-muted line-clamp-6">{concept.imagePrompt}</span>
+                        </div>
+                      )}
+                      {/* Pick */}
+                      <button
+                        onClick={() => toggleFactoryPick(concept.id)}
+                        className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center ${
+                          isPicked ? 'bg-yellow-400 text-black' : 'bg-black/40 text-white/60 hover:text-white'
+                        }`}
+                      >
+                        {isPicked ? '★' : '☆'}
+                      </button>
+                      {/* Style badge */}
+                      <span className={`absolute top-1.5 left-1.5 text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                        concept.style === 'zak' ? 'bg-purple-500 text-white' : 'bg-accent-teal text-black'
+                      }`}>
+                        {concept.style.toUpperCase()}
+                      </span>
+                      {/* Vault + Delete */}
+                      <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+                        <SendToVaultButton
+                          project={project}
+                          sourceGateId="gate8"
+                          draft={{
+                            imageUrl: imgs[0],
+                            hook: chosenHeadline,
+                            headline: chosenHeadline,
+                            format: 'static',
+                            angle: concept.psychAngle,
+                            niche: project?.niche,
+                            awarenessLevel: project?.selectedFunnel,
+                          }}
+                          className="w-6 h-6 rounded-full bg-black/40 text-white/70 hover:bg-accent-orange hover:text-bg-primary text-xs flex items-center justify-center"
+                          label="🗃️"
+                        />
+                        <button
+                          onClick={() => deleteConcept(concept.id)}
+                          className="w-6 h-6 rounded-full bg-black/40 text-white/60 hover:bg-red-500 hover:text-white text-xs"
+                          title="Delete concept"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Palette */}
+                    {concept.palette && concept.palette.length > 0 && (
+                      <div className="flex h-1">
+                        {concept.palette.slice(0, 5).map((c, i) => (
+                          <div key={i} className="flex-1" style={{ backgroundColor: c }} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Headline + picker */}
+                    <div className="p-3">
+                      <p className="text-xs font-semibold text-text-primary mb-2 leading-tight">
+                        {chosenHeadline}
+                      </p>
+                      {concept.psychAngle && (
+                        <p className="text-[10px] text-text-muted italic mb-2">{concept.psychAngle}</p>
+                      )}
+                      {headlineOptions.length > 1 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {headlineOptions.map((h, i) => {
+                            const active = h === chosenHeadline;
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => pickHeadline(concept.id, h)}
+                                className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                  active
+                                    ? activeChipClass
+                                    : 'bg-bg-primary border-border text-text-muted hover:text-text-primary'
+                                }`}
+                                title={h}
+                              >
+                                {i === 0 ? 'Main' : `V${i}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => generateForConcept(concept)}
+                        disabled={isGen}
+                        className={`w-full py-1.5 text-[11px] rounded-lg transition-colors ${
+                          imgs.length === 0
+                            ? 'text-accent-teal border border-accent-teal/30 hover:bg-accent-teal/10'
+                            : 'text-accent-orange border border-accent-orange/30 hover:bg-accent-orange/10'
+                        } disabled:opacity-40`}
+                      >
+                        {isGen ? 'Generating...' : imgs.length === 0 ? `Generate (${studioFormats.size} fmt)` : `Re-gen (${imgs.length})`}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        ) : (
+        )}
+
+        {combos.length === 0 && studioConcepts.length === 0 && (
+          <div className="flex items-center justify-center h-full text-text-muted text-sm px-6 text-center">
+            Lance une Wave ZAK ou EVOLVE pour générer des concepts, ou sélectionne headlines+presets+formats ci-contre pour voir les combinaisons classiques.
+          </div>
+        )}
+        {combos.length > 0 && (
           <div className="p-4">
             {/* Results header */}
             <div className="flex items-center justify-between mb-4">
@@ -521,15 +873,16 @@ export default function CreativeFactory({
                       </span>
                     </div>
 
-                    {/* Generate single button (if no image yet) */}
-                    {imgs.length === 0 && !isGenerating && !isRunning && (
-                      <div className="px-2.5 pb-2">
+                    {/* Generate / Re-generate button */}
+                    {!isGenerating && !isRunning && (
+                      <div className="px-2.5 pb-2 flex gap-1.5">
                         <button
                           onClick={async () => {
                             setGeneratingIds(prev => new Set([...prev, combo.id]));
                             const url = await generateOne(combo);
                             if (url) {
-                              const next = { ...factoryImages, [combo.id]: [url] };
+                              const prev = factoryImages[combo.id] ?? [];
+                              const next = { ...factoryImages, [combo.id]: [url, ...prev] };
                               onDecisionsChange({ ...humanDecisions, factoryImages: next });
                             }
                             setGeneratingIds(prev => {
@@ -538,10 +891,35 @@ export default function CreativeFactory({
                               return n;
                             });
                           }}
-                          className="w-full py-1.5 text-[10px] text-accent-teal border border-accent-teal/30 rounded-lg hover:bg-accent-teal/10 transition-colors"
+                          className={`flex-1 py-1.5 text-[10px] rounded-lg transition-colors ${
+                            imgs.length === 0
+                              ? 'text-accent-teal border border-accent-teal/30 hover:bg-accent-teal/10'
+                              : 'text-accent-orange border border-accent-orange/30 hover:bg-accent-orange/10'
+                          }`}
                         >
-                          Generate
+                          {imgs.length === 0 ? 'Generate' : `Re-gen (${imgs.length})`}
                         </button>
+                      </div>
+                    )}
+
+                    {/* Image iterations carousel */}
+                    {imgs.length > 1 && (
+                      <div className="px-2.5 pb-2 flex gap-1 overflow-x-auto">
+                        {imgs.map((url, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              const reordered = [url, ...imgs.filter((_, j) => j !== i)];
+                              const next = { ...factoryImages, [combo.id]: reordered };
+                              onDecisionsChange({ ...humanDecisions, factoryImages: next });
+                            }}
+                            className={`shrink-0 w-8 h-8 rounded border overflow-hidden ${
+                              i === 0 ? 'border-accent-orange' : 'border-border opacity-60 hover:opacity-100'
+                            }`}
+                          >
+                            <img src={url} alt="" className="w-full h-full object-cover" />
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>

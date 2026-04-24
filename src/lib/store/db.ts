@@ -6,10 +6,12 @@
 // ============================================================
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Project, GateOutput } from '../types';
-import { KnowledgeEntry, TrainingSource, AgentMemoryEntry, TrainingChunk } from '../kb/types';
+import { Project, GateOutput, isPerSubAvatarGate } from '../types';
+import { KnowledgeEntry, TrainingSource, AgentMemoryEntry, TrainingChunk, PersonaDistillation, AgentConstitution, ScoutLedgerEntry, AgentId } from '../kb/types';
 import { GoldOutput, LearningProfile } from '../learning/types';
 import { Template } from '../templates/types';
+import { VideoAdScript } from '../video/types';
+import { SwipeVaultEntry } from '../swipeVault/types';
 import { mirrorProject, mirrorProjectDelete, mirrorGateOutput } from './serverMirror';
 
 interface PawenDB extends DBSchema {
@@ -89,10 +91,48 @@ interface PawenDB extends DBSchema {
       'by-category': string;
     };
   };
+  // === v6: Animated Video Ads ===
+  videoAds: {
+    key: string;
+    value: VideoAdScript;
+    indexes: {
+      'by-project': string;
+    };
+  };
+  // === v7: Swipe Vault (global ads library) ===
+  swipeVault: {
+    key: string;
+    value: SwipeVaultEntry;
+    indexes: {
+      'by-status': string;
+      'by-niche': string;
+      'by-format': string;
+      'by-awareness': string;
+    };
+  };
+  // === v8: Phase U — Persona distillation (baked-in expertise) ===
+  personaDistillations: {
+    key: string;                   // agentId
+    value: PersonaDistillation;
+  };
+  // === v8: Phase U — Agent constitutions (self-rewritten rules) ===
+  agentConstitutions: {
+    key: string;                   // agentId — latest version lives here
+    value: AgentConstitution;
+  };
+  // === v8: Phase U — Scout ledger (scraping budget tracking) ===
+  scoutLedger: {
+    key: string;                   // uuid
+    value: ScoutLedgerEntry;
+    indexes: {
+      'by-project': string;
+      'by-day': string;
+    };
+  };
 }
 
 const DB_NAME = 'pawen-command-center';
-const DB_VERSION = 5;
+const DB_VERSION = 8;
 
 let dbInstance: IDBPDatabase<PawenDB> | null = null;
 
@@ -148,6 +188,30 @@ async function getDB(): Promise<IDBPDatabase<PawenDB>> {
         templateStore.createIndex('by-project', 'projectId');
         templateStore.createIndex('by-category', 'category');
       }
+
+      // === v6 stores: Animated Video Ads ===
+      if (oldVersion < 6) {
+        const videoStore = db.createObjectStore('videoAds', { keyPath: 'id' });
+        videoStore.createIndex('by-project', 'project_id');
+      }
+
+      // === v7 store: Swipe Vault (global ads library) ===
+      if (oldVersion < 7) {
+        const vaultStore = db.createObjectStore('swipeVault', { keyPath: 'id' });
+        vaultStore.createIndex('by-status', 'status');
+        vaultStore.createIndex('by-niche', 'niche');
+        vaultStore.createIndex('by-format', 'format');
+        vaultStore.createIndex('by-awareness', 'awarenessLevel');
+      }
+
+      // === v8 stores: Phase U — Autonomous mode ===
+      if (oldVersion < 8) {
+        db.createObjectStore('personaDistillations', { keyPath: 'agentId' });
+        db.createObjectStore('agentConstitutions', { keyPath: 'agentId' });
+        const scoutStore = db.createObjectStore('scoutLedger', { keyPath: 'id' });
+        scoutStore.createIndex('by-project', 'projectId');
+        scoutStore.createIndex('by-day', 'day');
+      }
     },
   });
 
@@ -176,6 +240,14 @@ export async function saveProject(project: Project): Promise<void> {
   mirrorProject(project);
 }
 
+// Used by bootstrap to restore server state into local IndexedDB
+// WITHOUT re-mirroring back up (avoids loops + watermark stacking) and
+// WITHOUT bumping updatedAt (preserves server's authoritative timestamp).
+export async function restoreProject(project: Project): Promise<void> {
+  const db = await getDB();
+  await db.put('projects', project);
+}
+
 export async function deleteProject(id: string): Promise<void> {
   const db = await getDB();
   const tx = db.transaction(['projects', 'gateOutputs', 'images'], 'readwrite');
@@ -199,9 +271,35 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 // === GATE OUTPUTS ===
+//
+// Key format:
+//   Shared gates (gate1, brand-dna): `${projectId}:${gateId}`
+//   Per-SA gates (gate2-9) in batch: `${projectId}:${gateId}:${subAvatarId}`
+//   Legacy single-SA outputs: `${projectId}:${gateId}` (read-through fallback)
+//
+// Resolution order when reading a per-SA gate:
+//   1. Try `${projectId}:${gateId}:${subAvatarId}`
+//   2. Fall back to legacy `${projectId}:${gateId}` (pre-batch projects)
 
-export async function getGateOutput(projectId: string, gateId: string): Promise<GateOutput | undefined> {
+function buildGateKey(projectId: string, gateId: string, subAvatarId?: string): string {
+  if (subAvatarId && isPerSubAvatarGate(gateId as import('../types').GateId)) {
+    return `${projectId}:${gateId}:${subAvatarId}`;
+  }
+  return `${projectId}:${gateId}`;
+}
+
+export async function getGateOutput(
+  projectId: string,
+  gateId: string,
+  subAvatarId?: string,
+): Promise<GateOutput | undefined> {
   const db = await getDB();
+  // Try per-SA key first if applicable
+  if (subAvatarId && isPerSubAvatarGate(gateId as import('../types').GateId)) {
+    const perSA = await db.get('gateOutputs', `${projectId}:${gateId}:${subAvatarId}`);
+    if (perSA) return perSA;
+  }
+  // Legacy / shared key
   return db.get('gateOutputs', `${projectId}:${gateId}`);
 }
 
@@ -210,13 +308,48 @@ export async function getAllGateOutputs(projectId: string): Promise<GateOutput[]
   return db.getAllFromIndex('gateOutputs', 'by-project', projectId);
 }
 
+// Returns gate outputs scoped to one sub-avatar view: for per-SA gates, returns
+// the per-SA version (falling back to legacy if missing); for shared gates,
+// returns the shared output. Used by runGate / autoPipeline to build previousOutputs
+// context that stays coherent to the SA being processed.
+export async function getGateOutputsForSubAvatar(
+  projectId: string,
+  subAvatarId: string,
+): Promise<Record<string, GateOutput>> {
+  const all = await getAllGateOutputs(projectId);
+  const byGate: Record<string, GateOutput> = {};
+  for (const o of all) {
+    // Per-SA gates: prefer the per-SA record; fall back to legacy if no per-SA.
+    if (isPerSubAvatarGate(o.gateId)) {
+      if (o.subAvatarId === subAvatarId) {
+        byGate[o.gateId] = o;
+      } else if (!byGate[o.gateId] && !o.subAvatarId) {
+        byGate[o.gateId] = o; // legacy fallback
+      }
+    } else {
+      byGate[o.gateId] = o; // shared gate (gate1, brand-dna)
+    }
+  }
+  return byGate;
+}
+
 export async function saveGateOutput(output: GateOutput): Promise<void> {
   const db = await getDB();
   output.updatedAt = new Date().toISOString();
-  const record = { ...output, _key: `${output.projectId}:${output.gateId}` };
+  const key = buildGateKey(output.projectId, output.gateId, output.subAvatarId);
+  const record = { ...output, _key: key };
   await db.put('gateOutputs', record);
   // Fire-and-forget mirror so admin can inspect every gate run.
   mirrorGateOutput(output);
+}
+
+// Used by bootstrap to restore server state into local IndexedDB
+// WITHOUT re-mirroring back up and WITHOUT bumping updatedAt.
+export async function restoreGateOutput(output: GateOutput): Promise<void> {
+  const db = await getDB();
+  const key = buildGateKey(output.projectId, output.gateId, output.subAvatarId);
+  const record = { ...output, _key: key };
+  await db.put('gateOutputs', record);
 }
 
 // === IMAGES ===
@@ -457,7 +590,85 @@ export async function deleteTemplate(id: string): Promise<void> {
   await db.delete('templates', id);
 }
 
+// === VIDEO ADS ===
+
+export async function getVideoAd(id: string): Promise<VideoAdScript | undefined> {
+  const db = await getDB();
+  return db.get('videoAds', id);
+}
+
+export async function getProjectVideoAds(projectId: string): Promise<VideoAdScript[]> {
+  const db = await getDB();
+  return db.getAllFromIndex('videoAds', 'by-project', projectId);
+}
+
+export async function saveVideoAd(ad: VideoAdScript): Promise<void> {
+  const db = await getDB();
+  ad.updated_at = new Date().toISOString();
+  await db.put('videoAds', ad);
+}
+
+export async function deleteVideoAd(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('videoAds', id);
+}
+
 // === EXPORT ===
+
+// === SWIPE VAULT (v7, global cross-project ads library) ===
+
+export async function addSwipeEntry(entry: SwipeVaultEntry): Promise<void> {
+  const db = await getDB();
+  await db.put('swipeVault', entry);
+}
+
+export async function updateSwipeEntry(entry: SwipeVaultEntry): Promise<void> {
+  const db = await getDB();
+  entry.updatedAt = new Date().toISOString();
+  await db.put('swipeVault', entry);
+}
+
+export async function deleteSwipeEntry(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('swipeVault', id);
+}
+
+export async function getSwipeEntry(id: string): Promise<SwipeVaultEntry | undefined> {
+  const db = await getDB();
+  return db.get('swipeVault', id);
+}
+
+export async function getAllSwipeEntries(): Promise<SwipeVaultEntry[]> {
+  const db = await getDB();
+  return db.getAll('swipeVault');
+}
+
+export async function querySwipeEntries(filter: {
+  status?: string;
+  niche?: string;
+  format?: string;
+  awarenessLevel?: string;
+}): Promise<SwipeVaultEntry[]> {
+  const db = await getDB();
+  let entries: SwipeVaultEntry[];
+  if (filter.status) {
+    entries = await db.getAllFromIndex('swipeVault', 'by-status', filter.status);
+  } else if (filter.niche) {
+    entries = await db.getAllFromIndex('swipeVault', 'by-niche', filter.niche);
+  } else if (filter.format) {
+    entries = await db.getAllFromIndex('swipeVault', 'by-format', filter.format);
+  } else if (filter.awarenessLevel) {
+    entries = await db.getAllFromIndex('swipeVault', 'by-awareness', filter.awarenessLevel);
+  } else {
+    entries = await db.getAll('swipeVault');
+  }
+  return entries.filter(e =>
+    (!filter.status || e.status === filter.status) &&
+    (!filter.niche || e.niche === filter.niche) &&
+    (!filter.format || e.format === filter.format) &&
+    (!filter.awarenessLevel || e.awarenessLevel === filter.awarenessLevel)
+  );
+}
 
 export async function exportProject(projectId: string) {
   const project = await getProject(projectId);
@@ -472,4 +683,77 @@ export async function exportProject(projectId: string) {
       blob: undefined,
     })),
   };
+}
+
+// ============================================================
+// Phase U — Persona Distillations
+// ============================================================
+
+export async function savePersonaDistillation(rec: PersonaDistillation): Promise<void> {
+  const db = await getDB();
+  await db.put('personaDistillations', rec);
+}
+
+export async function getPersonaDistillation(agentId: AgentId): Promise<PersonaDistillation | undefined> {
+  const db = await getDB();
+  return db.get('personaDistillations', agentId);
+}
+
+export async function getAllPersonaDistillations(): Promise<PersonaDistillation[]> {
+  const db = await getDB();
+  return db.getAll('personaDistillations');
+}
+
+export async function deletePersonaDistillation(agentId: AgentId): Promise<void> {
+  const db = await getDB();
+  await db.delete('personaDistillations', agentId);
+}
+
+// ============================================================
+// Phase U — Agent Constitutions
+// ============================================================
+
+export async function saveAgentConstitution(rec: AgentConstitution): Promise<void> {
+  const db = await getDB();
+  await db.put('agentConstitutions', rec);
+}
+
+export async function getAgentConstitution(agentId: AgentId): Promise<AgentConstitution | undefined> {
+  const db = await getDB();
+  return db.get('agentConstitutions', agentId);
+}
+
+export async function getAllAgentConstitutions(): Promise<AgentConstitution[]> {
+  const db = await getDB();
+  return db.getAll('agentConstitutions');
+}
+
+export async function deleteAgentConstitution(agentId: AgentId): Promise<void> {
+  const db = await getDB();
+  await db.delete('agentConstitutions', agentId);
+}
+
+// ============================================================
+// Phase U — Scout Ledger
+// ============================================================
+
+export async function appendScoutLedger(entry: ScoutLedgerEntry): Promise<void> {
+  const db = await getDB();
+  await db.put('scoutLedger', entry);
+}
+
+export async function getScoutLedgerForProject(projectId: string): Promise<ScoutLedgerEntry[]> {
+  const db = await getDB();
+  return db.getAllFromIndex('scoutLedger', 'by-project', projectId);
+}
+
+export async function getScoutLedgerForDay(day: string): Promise<ScoutLedgerEntry[]> {
+  const db = await getDB();
+  return db.getAllFromIndex('scoutLedger', 'by-day', day);
+}
+
+export async function countScoutCallsForProjectToday(projectId: string): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const entries = await getScoutLedgerForProject(projectId);
+  return entries.filter(e => e.day === today).length;
 }

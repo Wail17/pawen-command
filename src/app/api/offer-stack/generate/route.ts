@@ -204,7 +204,7 @@ Generate a COMPLETE offer stack. Return valid JSON only, no markdown:
 
   const requestBody = {
     model: 'claude-sonnet-4-6-20250514',
-    max_tokens: 4096,
+    max_tokens: 12000,
     temperature: 0.7,
     system: [
       {

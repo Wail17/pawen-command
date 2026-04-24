@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/session';
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const session = requireSession(req);
   if (session instanceof Response) return session;
@@ -32,6 +34,7 @@ export async function POST(req: NextRequest) {
         include_raw_content: false,
         include_answer: true,
       }),
+      signal: AbortSignal.timeout(55_000),
     });
 
     if (!response.ok) {

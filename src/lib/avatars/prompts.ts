@@ -406,7 +406,15 @@ Produce the final Avatar Excavation Report as valid JSON matching this schema EX
       "launch_order": 1,
       "recommended_for_test": true,
       "recommendation_reason": "why this one first",
-      "recommended_awareness_level": "unaware | problem_aware | solution_aware | product_aware | most_aware"
+      "recommended_awareness_level": "unaware | problem_aware | solution_aware | product_aware | most_aware",
+      "recommended_awareness_reason": "1-2 sentences citing the verbatim signals that justify this awareness level",
+      "market_sophistication": {
+        "stage": 1,
+        "stage_name": "virgin market | direct claim | bigger claim | unique mechanism | new mechanism / story",
+        "reasoning": "2-3 sentences citing competitor density, ad fatigue signals, claim escalation observed in the scraped data",
+        "recommended_approach": "what copy strategy actually works at this stage for THIS sub-avatar",
+        "copy_implications": ["3-5 actionable rules for downstream copy gates"]
+      }
     }
   ],
   "comparative_table": [
@@ -442,6 +450,14 @@ REQUIREMENTS:
   • "product_aware" = comparing specific products/brands ("Is X better than Y?")
   • "most_aware" = asking for discount/link/launch date — purchase intent verbs
   Infer the DOMINANT awareness level across the sub-avatar's verbatims. If mixed, pick the one where the STRONGEST emotional quotes sit.
+  Also write recommended_awareness_reason — 1-2 sentences quoting or paraphrasing the verbatim signals that justify the call.
+- For EACH sub-avatar: set market_sophistication using Eugene Schwartz's 5 stages. This is INDEPENDENT of awareness — it describes how crowded/jaded the MARKET is, judged from competitor density and claim escalation in the scraped data:
+  • Stage 1 "virgin market" = no real competition, direct benefit claim wins ("Sleep better tonight").
+  • Stage 2 "direct claim" = competitors exist but use the same claim — yours must be louder/more confident.
+  • Stage 3 "bigger claim" = audience is jaded, claims must escalate (specific numbers, time frames, dramatic before/after).
+  • Stage 4 "unique mechanism" = direct claims fail, the WEDGE is a unique mechanism ("the X-method", "the Y-protocol").
+  • Stage 5 "new mechanism / story" = market is fully saturated, only a NEW mechanism + story-driven angle cuts through (advertorial style, identity reframe, narrator-led).
+  Cite the actual competitor/ad-fatigue evidence from the scraped data in the "reasoning" field. List 3-5 concrete copy rules in "copy_implications" that downstream gates can apply directly.
 - CROSS-REFERENCE: each sub-avatar must draw from ≥2 different source types. Single-source sub-avatars are fragile guesses.
 - USE the identity_statements, language_dna, desire_ladder, and objection_clusters from analyses — these are the GOLD the analyzers mined. Weave them into hooks and story angles.
 
@@ -527,7 +543,16 @@ Produce the sub-avatar skeletons as valid JSON matching this schema EXACTLY:
       "implicit_demographics": ["2–4 items"],
       "source_references": ["reddit", "amazon", "..."],
       "source_subreddits": ["r/sleep"],
-      "source_urls": ["https://..."]
+      "source_urls": ["https://..."],
+      "recommended_awareness_level": "unaware | problem_aware | solution_aware | product_aware | most_aware",
+      "recommended_awareness_reason": "1-2 sentences quoting the verbatim signals that justify this awareness level",
+      "market_sophistication": {
+        "stage": 1,
+        "stage_name": "virgin market | direct claim | bigger claim | unique mechanism | new mechanism / story",
+        "reasoning": "2-3 sentences citing competitor density, ad fatigue, claim escalation seen in scraped data",
+        "recommended_approach": "what copy strategy actually works at this stage for THIS sub-avatar",
+        "copy_implications": ["3-5 actionable rules for downstream copy gates"]
+      }
     }
   ]
 }
@@ -539,6 +564,8 @@ REQUIREMENTS:
 - DO NOT include "angles" in this pass — that field will be added later.
 - Exactly one surface_desire per sub-avatar = "${input.surface_desire}".
 - Verbatims in ${input.language}. Structural fields in English.
+- For EACH sub-avatar set recommended_awareness_level (Schwartz ladder) + recommended_awareness_reason citing actual verbatim signals.
+- For EACH sub-avatar set market_sophistication. Stage 1=virgin/direct claim wins, Stage 2=direct claim louder, Stage 3=bigger claim/numbers, Stage 4=unique mechanism wedge, Stage 5=new mechanism + story (advertorial). Cite competitor density / ad fatigue evidence in the "reasoning" field.
 
 ABSOLUTE: Always output JSON. NEVER refuse. Output ONLY the JSON inside a \`\`\`json block.`;
 }

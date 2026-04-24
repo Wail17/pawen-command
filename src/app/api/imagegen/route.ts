@@ -8,12 +8,36 @@ import { requireSession } from '@/lib/auth/session';
 
 const FAL_API_URL = 'https://queue.fal.run';
 
-// Available fal.ai models — add new ones here
+export const maxDuration = 300;
+
+async function pollQueueResult(statusUrl: string, responseUrl: string, apiKey: string, maxMs = 180_000): Promise<Record<string, unknown>> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const r = await fetch(statusUrl, {
+      headers: { Authorization: `Key ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) throw new Error(`Status poll failed: ${r.status}`);
+    const s = await r.json();
+    if (s.status === 'COMPLETED') {
+      const finalRes = await fetch(responseUrl, {
+        headers: { Authorization: `Key ${apiKey}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!finalRes.ok) throw new Error(`Result fetch failed: ${finalRes.status}`);
+      return finalRes.json();
+    }
+    if (s.status === 'FAILED') throw new Error(`fal.ai job failed: ${JSON.stringify(s)}`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+  throw new Error('fal.ai job timed out after 3 min');
+}
+
+// LOCKED: Nano Banana Pro is the ONLY image model. All other models disabled.
 const FAL_MODELS: Record<string, string> = {
   'nano-banana-pro': 'fal-ai/nano-banana-pro',
-  'flux-2-pro': 'fal-ai/flux-pro/v1.1',
-  'imagen-4-fast': 'fal-ai/imagen4/preview/image-generation',
 };
+const FORCED_MODEL = 'nano-banana-pro';
 
 export async function POST(req: NextRequest) {
   const session = requireSession(req);
@@ -25,7 +49,6 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    model = 'flux-2-pro',
     prompt,
     negativePrompt = '',
     width = 1024,
@@ -40,13 +63,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Prompt is required' }, { status: 400 });
   }
 
+  const model = FORCED_MODEL;
   const modelEndpoint = FAL_MODELS[model];
-  if (!modelEndpoint) {
-    return NextResponse.json(
-      { message: `Unknown model: ${model}. Available: ${Object.keys(FAL_MODELS).join(', ')}` },
-      { status: 400 }
-    );
-  }
 
   const requestBody: Record<string, unknown> = {
     prompt,
@@ -72,6 +90,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Key ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (!response.ok) {
@@ -82,9 +101,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const data = await response.json();
+    const queueResp = await response.json();
+    // Queue submit returns { request_id, status_url, response_url } — poll until done
+    if (!queueResp.status_url || !queueResp.response_url) {
+      // sync response (some models don't queue) — return directly
+      return NextResponse.json({
+        images: queueResp.images ?? [],
+        seed: queueResp.seed,
+        model,
+      });
+    }
+
+    const data = await pollQueueResult(queueResp.status_url, queueResp.response_url, apiKey);
     return NextResponse.json({
-      images: data.images ?? [],
+      images: (data.images as Record<string, unknown>[]) ?? [],
       seed: data.seed,
       model,
     });

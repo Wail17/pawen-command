@@ -4,7 +4,6 @@
 // so agents calibrate to what the human actually wants.
 // ============================================================
 
-import { GoldOutput } from './types';
 import {
   getGoldOutputsForGateAndNiche,
   getGoldOutputsForGate,
@@ -124,25 +123,116 @@ export async function buildLearningProfilePrompt(gateId?: string): Promise<strin
 
 /**
  * Build performance data prompt block.
- * Tells agents what actually converts in the real world.
+ * Tells agents what actually converts in the real world — distilled into
+ * patterns (winning hooks / formats / angles) when tagging is present,
+ * otherwise falls back to a clean top-performers list.
  */
 export function buildPerformancePrompt(adPerformance?: AdPerformance[]): string {
   if (!adPerformance || adPerformance.length === 0) return '';
 
-  // Sort by ROAS descending — best performers first
+  // Identify clearly winning + losing ads. Prefer explicit verdicts (set by
+  // the CSV insight extractor); otherwise infer from ROAS percentiles so
+  // hand-entered data still works.
   const sorted = [...adPerformance].sort((a, b) => b.roas - a.roas);
+  const winners = sorted.filter(a => a.verdict === 'winner');
+  const losers = sorted.filter(a => a.verdict === 'loser');
+
+  let inferredWinners: AdPerformance[] = [];
+  let inferredLosers: AdPerformance[] = [];
+  if (winners.length === 0 && losers.length === 0 && sorted.length >= 4) {
+    const cut = Math.max(1, Math.floor(sorted.length * 0.25));
+    inferredWinners = sorted.slice(0, cut);
+    inferredLosers = sorted.slice(-cut);
+  }
+  const W = winners.length ? winners : inferredWinners;
+  const L = losers.length ? losers : inferredLosers;
+
   const lines: string[] = ['=== PROVEN AD PERFORMANCE (real Meta Ads data) ==='];
 
-  for (const ad of sorted.slice(0, 5)) {
-    lines.push(`- "${ad.adName}": CTR ${ad.ctr}%, CPA $${ad.cpa}, ROAS ${ad.roas}x (${ad.impressions.toLocaleString()} impressions)`);
-    if (ad.notes) lines.push(`  Notes: ${ad.notes}`);
+  // Aggregate winners by tag (hook / format / angle) and surface dominant
+  // patterns so the agent has rules to apply, not raw rows to skim.
+  const tagBreakdown = (
+    items: AdPerformance[],
+    pick: (a: AdPerformance) => string | undefined,
+  ): Array<[string, { spend: number; conv: number; cnt: number; roas: number }]> => {
+    const m = new Map<string, { spend: number; conv: number; cnt: number; rev: number }>();
+    for (const a of items) {
+      const k = pick(a);
+      if (!k || k === 'unknown') continue;
+      const cur = m.get(k) ?? { spend: 0, conv: 0, cnt: 0, rev: 0 };
+      cur.spend += a.spend;
+      cur.conv += a.conversions;
+      cur.cnt += 1;
+      cur.rev += a.spend * a.roas;
+      m.set(k, cur);
+    }
+    return [...m.entries()]
+      .map(([k, v]) => [k, { spend: v.spend, conv: v.conv, cnt: v.cnt, roas: v.spend > 0 ? v.rev / v.spend : 0 }] as [string, { spend: number; conv: number; cnt: number; roas: number }])
+      .sort((a, b) => b[1].roas - a[1].roas);
+  };
+
+  if (W.length > 0) {
+    lines.push('');
+    lines.push('WINNING ADS (top performers):');
+    for (const ad of W.slice(0, 5)) {
+      const tags = [ad.hookType, ad.formatType, ad.angle].filter(t => t && t !== 'unknown').join(' / ');
+      const tagSuffix = tags ? `  [${tags}]` : '';
+      lines.push(`- "${ad.adName}": CTR ${ad.ctr.toFixed(2)}%, CPA $${ad.cpa.toFixed(2)}, ROAS ${ad.roas.toFixed(2)}x${tagSuffix}`);
+      if (ad.notes) lines.push(`  Note: ${ad.notes}`);
+    }
   }
 
-  // Calculate averages
-  const avgCtr = sorted.reduce((s, a) => s + a.ctr, 0) / sorted.length;
-  const avgRoas = sorted.reduce((s, a) => s + a.roas, 0) / sorted.length;
-  lines.push(`BENCHMARKS: avg CTR ${avgCtr.toFixed(2)}%, avg ROAS ${avgRoas.toFixed(1)}x`);
-  lines.push('Use these benchmarks to calibrate your output. Emulate patterns from top performers.');
+  if (L.length > 0) {
+    lines.push('');
+    lines.push('LOSING ADS (do NOT replicate these patterns):');
+    for (const ad of L.slice(0, 3)) {
+      const tags = [ad.hookType, ad.formatType, ad.angle].filter(t => t && t !== 'unknown').join(' / ');
+      const tagSuffix = tags ? `  [${tags}]` : '';
+      lines.push(`- "${ad.adName}": CTR ${ad.ctr.toFixed(2)}%, CPA ${ad.cpa === Infinity ? '—' : '$' + ad.cpa.toFixed(2)}, ROAS ${ad.roas.toFixed(2)}x${tagSuffix}`);
+    }
+  }
+
+  // Pattern rules — only when winners actually have creative tagging (CSV path)
+  const winnersHaveTags = W.some(a => a.hookType || a.formatType || a.angle);
+  if (winnersHaveTags) {
+    const winningHooks = tagBreakdown(W, a => a.hookType);
+    const losingHooks = tagBreakdown(L, a => a.hookType);
+    const winningFormats = tagBreakdown(W, a => a.formatType);
+    const winningAngles = tagBreakdown(W, a => a.angle);
+
+    lines.push('');
+    lines.push('PATTERNS YOU MUST APPLY:');
+    if (winningHooks[0]) {
+      const [hook, agg] = winningHooks[0];
+      lines.push(`✓ Lead with "${hook}" hooks — ROAS ${agg.roas.toFixed(2)}x across ${agg.cnt} winning ads.`);
+    }
+    if (winningFormats[0]) {
+      const [fmt, agg] = winningFormats[0];
+      lines.push(`✓ Prefer "${fmt}" format — ROAS ${agg.roas.toFixed(2)}x across ${agg.cnt} winning ads.`);
+    }
+    if (winningAngles[0]) {
+      const [ang, agg] = winningAngles[0];
+      lines.push(`✓ Lean into "${ang}" angle — ROAS ${agg.roas.toFixed(2)}x across ${agg.cnt} winning ads.`);
+    }
+    if (losingHooks[0] && losingHooks[0][1].cnt >= 2) {
+      const [hook] = losingHooks[0];
+      lines.push(`✗ Avoid "${hook}" hooks — they keep losing in this account.`);
+    }
+  }
+
+  // Account benchmarks
+  const accountSpend = sorted.reduce((s, a) => s + a.spend, 0);
+  const accountConv = sorted.reduce((s, a) => s + a.conversions, 0);
+  const accountRev = sorted.reduce((s, a) => s + a.spend * a.roas, 0);
+  const accountImpr = sorted.reduce((s, a) => s + a.impressions, 0);
+  const accountClicks = sorted.reduce((s, a) => s + a.clicks, 0);
+  const accountRoas = accountSpend > 0 ? accountRev / accountSpend : 0;
+  const accountCtr = accountImpr > 0 ? (accountClicks / accountImpr) * 100 : 0;
+  const accountCpa = accountConv > 0 ? accountSpend / accountConv : 0;
+
+  lines.push('');
+  lines.push(`ACCOUNT BENCHMARKS (beat these): ROAS ${accountRoas.toFixed(2)}x · CTR ${accountCtr.toFixed(2)}% · CPA $${accountCpa.toFixed(2)} across ${sorted.length} ads`);
+  lines.push('Your job: produce copy/creatives that match the WINNING patterns above and outperform these benchmarks.');
   lines.push('=== END PERFORMANCE DATA ===');
 
   return lines.join('\n');
@@ -157,6 +247,7 @@ export async function buildLearningInjection(params: {
   niche: string;
   funnel: string;
   adPerformance?: AdPerformance[];
+  copyFormat?: 'advertorial' | 'native' | 'listicle' | 'skipped';
 }): Promise<string> {
   const [goldBlock, profileBlock, nicheBlock] = await Promise.all([
     buildGoldOutputsPrompt({
@@ -170,7 +261,21 @@ export async function buildLearningInjection(params: {
 
   const perfBlock = buildPerformancePrompt(params.adPerformance);
 
+  // Hard-coded DR principles — injected into EVERY agent prompt for gates
+  // that produce copy or creatives. Non-negotiable. See drPrinciples.ts.
+  const copyGates = new Set(['gate4', 'gate5', 'gate6']);
+  const creativeGates = new Set(['gate7', 'gate8']);
+  let drBlock = '';
+  if (copyGates.has(params.gateId) || creativeGates.has(params.gateId)) {
+    const { buildDRInjection } = await import('./drPrinciples');
+    drBlock = buildDRInjection(params.copyFormat, {
+      includeCreativeRules: creativeGates.has(params.gateId),
+      includeCopyRules: copyGates.has(params.gateId),
+    });
+  }
+
   const parts: string[] = [];
+  if (drBlock) parts.push(drBlock);
   if (goldBlock) parts.push(goldBlock);
   if (profileBlock) parts.push(profileBlock);
   if (nicheBlock) parts.push(nicheBlock);

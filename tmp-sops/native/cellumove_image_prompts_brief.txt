@@ -1,0 +1,260 @@
+CELLUMOVE — WOMAN'S HEALTH INSIDER ADVERTORIAL
+
+IMAGE PRODUCTION BRIEF
+
+All images needed for the landing page. 14 placements total (16 individual assets including 3 portraits).
+
+QUICK REFERENCE
+
+#1  Hero  — Photography
+
+#2  Identification  — Photography
+
+#3  Blood Pooling Diagram  — Custom Graphic
+
+#4  Failed Alternatives Flat-lay  — Photography
+
+#5  Beige Stockings Close-up  — Photography
+
+#6  Product Reveal  — Photography
+
+#7  Product Texture Close-up  — Photography / Macro
+
+#8  Compression Zones  — Custom Graphic
+
+#9  Results Timeline  — Custom Graphic
+
+#10A  Testimonial Portrait 1 (Margaret)  — Photography
+
+#10B  Testimonial Portrait 2 (Susan)  — Photography
+
+#10C  Testimonial Portrait 3 (Diane)  — Photography
+
+#11  Before/After  — Real Customer Photo
+
+#12  Comparison Table  — Custom Graphic
+
+#13  Offer Product Shot  — Photography
+
+#14  Stock Indicator Bar  — Custom Graphic / UI
+
+
+
+DETAILED PROMPTS
+
+IMAGE #1
+
+Section: HERO — Above the fold
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Warm, natural photograph. Woman aged 55-60, silver-grey hair, casual but elegant. She's sitting on a light linen couch, legs slightly elevated on a cushion, eyes closed, one hand resting on her calf. Late afternoon light coming through a window. She looks tired but dignified — NOT in pain, NOT medical. Lifestyle magazine feel. Muted warm tones. Shallow depth of field. Shot from mid-distance.
+
+Style: Editorial lifestyle photography, Vogue Health vibes, NOT stock photo. NOT clinical. NOT sad.
+
+IMAGE #2
+
+Section: IDENTIFICATION — Daily suffering
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Natural photograph. Woman 58-62, wearing casual clothing (linen trousers, comfortable shoes), sitting on a bench outside a shop. Shopping bags beside her. She's rubbing her lower calf with one hand, looking slightly down. NOT dramatic suffering — just quiet, everyday discomfort. Golden hour light. Street background (UK high street feel). Real, authentic, unposed.
+
+Style: Documentary lifestyle, iPhone-quality warmth, NOT posed advertising.
+
+IMAGE #3
+
+Section: THE SCIENCE — Blood pooling diagram
+
+Type: CUSTOM GRAPHIC / INFOGRAPHIC (Designer)
+
+Clean, medical-editorial infographic showing TWO leg diagrams side by side.
+
+LEFT: "Age 20-40" — clean leg silhouette, veins visible with arrows pointing UP. Valves shown as small green checkmarks. Blood flows smoothly upward. Label: "Healthy valves. Strong circulation."
+
+RIGHT: "Age 50+" — same leg silhouette, veins slightly enlarged. Some valves shown as red X marks. Blood arrows pooling DOWNWARD. Lower leg area tinted reddish/swollen. Label: "Weakened valves. Blood pools."
+
+CENTER LABEL: "BLOOD POOLING"Bottom text: "When valves weaken, blood stagnates in the lower legs — causing heaviness, swelling, and fatigue."
+
+Style: Clean, minimal, medical journal quality. Warm white background. Navy and coral colour palette. NO cartoon style. Think BMJ or Lancet patient info sheet meets Kinfolk magazine.
+
+NOTE: An animated version already exists in the HTML. This is the static image version for the page.
+
+IMAGE #4
+
+Section: FAILED ALTERNATIVES — Flat-lay
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Flat-lay photograph on a marble bathroom counter. Arranged items: a tube of "leg cooling gel" (generic, no real brand), a pair of beige medical compression stockings (unflattering, clinical), a glass of water, a small pillow. All slightly messy, lived-in, real. One item (the stockings) is slightly pushed aside — subtle "rejected" framing.
+
+Soft overhead lighting. Bathroom counter background.Style: Editorial flat-lay, Kinfolk magazine, NOT product photography. Slightly desaturated warm tones.
+
+IMAGE #5
+
+Section: FAILED ALTERNATIVES — Beige stockings close-up
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Close-up of a woman's hand (aged 55+, natural, no manicure) holding beige medical compression stockings against her leg. The stockings look clinical, unflattering. Her expression (partially visible) suggests mild distaste / resignation. Bathroom mirror in background, soft light.
+
+Style: Documentary, intimate, honest. NOT dramatic. NOT mocking.
+
+IMAGE #6
+
+Section: THE DISCOVERY — Product reveal
+
+Type: PHOTOGRAPHY (Stock / AI / On-brand shoot)
+
+A woman aged 55-58, sitting on the edge of her bed, putting on black compression leggings. Morning light through white curtains. The bedroom is warm, modern, tasteful — NOT clinical. She's smiling slightly, relaxed. The leggings look sleek and premium, NOT medical. A cup of tea on the nightstand.
+
+Style: Lifestyle editorial, warm morning light, premium fashion brand campaign meets health magazine. Shallow depth of field. Think M&S or John Lewis advertising meets editorial.
+
+CRITICAL: This is the first time the viewer sees the PRODUCT. The leggings must look premium, modern, fashionable — the opposite of the beige stockings in Image #5.
+
+IMAGE #7
+
+Section: THE DISCOVERY — Product texture close-up
+
+Type: PHOTOGRAPHY (Product / Macro)
+
+Extreme close-up of the compression legging fabric on a woman's thigh/calf. You can see the woven 3D texture pattern. Subtle sheen. Premium quality feel. Natural light hitting the fabric. The woman's hand gently touching/smoothing the fabric.
+
+Style: Macro product photography, premium fashion, NOT medical device. Think Lululemon product page meets Vogue textile detail shot.
+
+NOTE: Use actual Cellumove leggings if available. This shot sells the quality.
+
+IMAGE #8
+
+Section: HOW IT WORKS — Compression zones infographic
+
+Type: CUSTOM GRAPHIC / INFOGRAPHIC (Designer)
+
+Elegant diagram of a woman's legs wearing dark leggings, seen from the side. Three zones highlighted with colour gradient:
+
+ANKLE ZONE: Deep coral/red — "Strong compression" + small arrow pointing UPCALF ZONE: Warm orange — "Medium compression" + arrow pointing UPTHIGH ZONE: Soft yellow/cream — "Light compression" + arrow pointing UP
+
+Small text labels for each zone explaining benefit. Blood flow arrows running upward along the leg.
+
+Bottom label: "+30% blood circulation — 3D Graduated Compression Technology"
+
+Style: Clean, premium, medical-editorial. Same colour palette as the rest of the page (navy, coral, cream). Think Apple product diagram meets medical journal. NOT cheesy infomercial diagram.
+
+Dimensions: At least 1200px wide. Transparent or warm white background.
+
+IMAGE #9
+
+Section: RESULTS TIMELINE — Day 1 / Week 1 / Week 2-3
+
+Type: CUSTOM GRAPHIC / INFOGRAPHIC (Designer)
+
+Horizontal timeline, clean, editorial.
+
+DAY 1 ———— WEEK 1 ———— WEEK 2-3
+
+DAY 1: Icon of a leg with a lightness/feather symbol."Legs feel lighter. That afternoon heaviness is noticeably reduced."
+
+WEEK 1: Icon of an ankle with a downward arrow (swelling going down)."Swelling reduces. Ankles feel normal by evening."
+
+WEEK 2-3: Icon of smooth legs + mirror."Visible changes. Smoother skin. Less puffiness. You see the difference."
+
+Style: Clean, minimal. Navy + coral accents on white. Dotted line connecting the three stages. Think Headspace app meets medical timeline.
+
+NOTE: An interactive version already exists in the HTML. This is the static image version.
+
+IMAGE #10A
+
+Section: TESTIMONIALS — Portrait 1
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Portrait: Woman, 58, short silver hair, warm smile, casual navy top. Outdoor garden background. Natural light. Headshot/shoulders framing.
+
+Style: Real, warm, authentic. NOT model agency. NOT overly posed. Think BBC documentary portrait. The kind of face you'd see and think "she looks like my neighbour."
+
+USED FOR: Margaret, 61, Bristol testimonial.
+
+IMAGE #10B
+
+Section: TESTIMONIALS — Portrait 2
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Portrait: Woman, 62, auburn/grey hair, reading glasses pushed up on her head, gentle smile. Kitchen background. Natural light. Headshot/shoulders framing.
+
+Style: Real, warm, authentic. NOT model agency. NOT overly posed. Same documentary portrait feel as #10A but different environment and woman.
+
+USED FOR: Susan, 57, Edinburgh testimonial.
+
+IMAGE #10C
+
+Section: TESTIMONIALS — Portrait 3
+
+Type: PHOTOGRAPHY (Stock / AI)
+
+Portrait: Woman, 55, dark hair with grey streaks, confident expression, wearing a scarf. Coffee shop background. Natural light. Headshot/shoulders framing.
+
+Style: Real, warm, authentic. NOT model agency. NOT overly posed. Same documentary portrait feel as #10A/#10B but different environment and woman.
+
+USED FOR: Diane, 63, Kent testimonial.
+
+IMAGE #11
+
+Section: BEFORE/AFTER — Visual proof
+
+Type: REAL CUSTOMER PHOTO (from Trustpilot / customer submissions)
+
+Side-by-side Before/After photograph. Same woman, same angle, same lighting. Shot from mid-calf down.
+
+LEFT ("Before"): Visible ankle swelling, slight redness, puffy appearance. Timestamp overlay: "Day 1"
+
+RIGHT ("After"): Noticeably less swollen, smoother appearance, ankle definition visible. Timestamp overlay: "Day 14"
+
+CRITICAL REQUIREMENTS:  •  Same lighting in both shots  •  Same position / angle  •  Same identifying marks visible (mole, scar, etc.) for authenticity  •  NOT dramatic transformation — REALISTIC improvement  •  Bathroom or bedroom floor setting  •  Natural light  •  iPhone-quality (the imperfection IS the credibility)  •  NO filters, NO retouching
+
+NOTE: This MUST come from a real customer. AI-generated B/A will destroy trust. Pull from Trustpilot submissions or customer email.
+
+IMAGE #12
+
+Section: COMPARISON TABLE — Cellumove vs Alternatives
+
+Type: CUSTOM GRAPHIC / INFOGRAPHIC (Designer)
+
+Clean comparison table graphic, editorial style:
+
+                    | Medical        | Cellumove 3D                    | Stockings      | Compression————————————————————————————————————————————Graduated           |      ✓         |      ✓compression         |                |————————————————————————————————————————————Comfortable for     |      ✗         |      ✓daily wear          |                |————————————————————————————————————————————Looks like          |      ✗         |      ✓activewear          |                |————————————————————————————————————————————Wearable to shops   |      ✗         |      ✓————————————————————————————————————————————Day 1 relief        |      ✓         |      ✓————————————————————————————————————————————Free size exchange  |      ✗         |      ✓————————————————————————————————————————————Price (2 pairs)     |   £60-80+      |   B1G1F                    |                |   (2 for 1)————————————————————————————————————————————
+
+Style: Clean table, serif headers, warm white background. Checkmarks in coral, X marks in light grey. Think medical journal comparison, NOT infomercial grid.
+
+NOTE: An HTML table version already exists in the page. This is an optional image alternative for visual impact.
+
+IMAGE #13
+
+Section: THE OFFER — Product shot
+
+Type: PHOTOGRAPHY (Product / Lifestyle)
+
+Two pairs of black compression leggings, neatly folded, laid on a white marble surface. A small branded box (Cellumove style) partially open behind them. A sprig of eucalyptus or dried lavender for warmth. Soft natural light from the left. Clean, premium, understated.
+
+Style: Premium D2C brand product photography. Think Glossier or The White Company unboxing. Minimal, warm, aspirational without being flashy.
+
+CRITICAL: This is the OFFER image. The viewer needs to see what she's getting — 2 pairs, beautifully presented. Premium feel = perceived value.
+
+NOTE: Use actual Cellumove product if available. Branded packaging preferred.
+
+IMAGE #14
+
+Section: FOMO / AVAILABILITY — Stock indicator
+
+Type: CUSTOM GRAPHIC / UI ELEMENT (Designer)
+
+Small, clean "stock indicator" bar. Editorial style, NOT screaming red.
+
+STOCK STATUS: [████████░░░░] LIMITEDMarch batch: 67% allocated"If you can add to cart, it's still in stock"
+
+Colour: Coral/warm fill, light grey empty portion. Small, understated. NOT popup. NOT flashing. Think airline seat map "only 3 seats left at this price."
+
+NOTE: An animated HTML version already exists in the page. This is the static fallback image. Keep it subtle and editorial — aggressive scarcity visuals will destroy the journal credibility.
+
+END OF IMAGE BRIEF — Cellumove / Woman's Health Insider Advertorial — March 2026
+

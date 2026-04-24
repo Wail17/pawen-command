@@ -114,7 +114,7 @@ export async function runAutoPipeline(
       }
     }
 
-    const config = getGateConfig(gateId);
+    const config = getGateConfig(gateId, currentProject);
 
     try {
       const result = await runGate({

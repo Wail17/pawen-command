@@ -1,0 +1,790 @@
+Start here: You are going to be helping me write an ad brief to create a winning Facebook & Instagram image ad. A winning Facebook & Instagram image ad is defined as a bold and scroll-stopping image with a powerful headline that ultimately allows the company to increase advertising spend profitably, and acquire more new customers.
+
+Please keep in mind that these image ads will need to be focused on specifically attracting NEW CUSTOMERS as ads that can attract and convert new customers are the only ads we are focused on making. So when writing these Facebook & Instagram ads, keep in mind the target avatar we will be focusing on will likely have never heard of our brand and does not care who we are. They only care about themselves. So this image ad has to appeal to them and show them we understand them.
+
+I now need you to ask me the questions below, one at a time, to gather the data prior to writing the brief:
+
+Research
+
+1. Please upload your cleaned research document, reviews, and any other resources to better understand this brand
+
+Avatar
+
+2. Please upload the target avatar for this ad
+
+Product
+
+3. Provide the product name for this ad and a brief description it (make sure to include unique features, benefits etc.)
+
+Final Confirmation
+
+4. Confirm with the user that they are ready to proceed with the static ads.
+
+
+
+Ad Writing Instructions For AI - Step 1
+
+Using all the data and insights you’ve gathered so far, you will now write nine headlines for the selected image ad. Ensure you leverage the data in the research document, writing it for the specific avatar, the correct product, and following the tone. Also, make sure the written headlines are short (6-8 words max) and are written with one key objective in mind: to stop the scroll of our target avatar and grab their attention to learn more and ultimately purchase from our company
+
+For each ad concept:
+
+Reference the example ad from below that you used to come up with the headline and how it works for this brand and avatar specifically
+
+Briefly explain why this headline will stop our potential avatar’s scroll
+
+Provide 2 other iterations of that main headline for me to choose from that follow the same idea.
+
+
+
+In order to ensure this ad is a scroll-stopping image ad that the target avatar remembers, and gets them to convert, I will need you to understand what these types of image ads look like.So please follow the examples below of headlines and image descriptions from world-class winning ads that have been written by the top advertisers in the world, and have been proven to convert.Example Image Ad #1:
+
+1. Core Headline:
+
+The core headline of the image ad is:"The world's cheapest airline."
+
+2. Vivid Explanation of the Image Ad:
+
+The image features a clever and playful comparison that showcases the affordability of Ryanair flights. Here’s the breakdown:
+
+Background and Layout:
+
+The background is a bold, solid blue, serving as a clean and striking base that makes all the other elements stand out vividly.
+
+The layout is symmetrical with two primary elements side by side, separated by the word “vs.” in the center.
+
+
+
+Left Side (Pizza):
+
+An open pizza box is displayed prominently. The box is brown and slightly tilted upward for a clear view of its contents.
+
+Inside the box, there is a pizza that looks typical but unremarkable: it has a slightly uneven crust and scattered toppings, primarily cheese with a few darker ingredients (possibly mushrooms or olives).
+
+Above the box, bold white text reads: “PIZZA $19.99”, directly referencing the cost of the pizza.
+
+
+
+Right Side (Pisa):
+
+Another open box is displayed next to the pizza box. This box is identical in shape and size but contains something completely unexpected: a drawing or artistic depiction of the Leaning Tower of Pisa.
+
+The depiction is grayscale and fits perfectly within the box as though it were a slice of pizza.
+
+Above the box, yellow and white text reads: “LONDON → PISA $19.99”.
+
+The price matches that of the pizza, suggesting that the cost of a flight to Pisa with Ryanair is as affordable as a single pizza.
+
+A small graphic of a Ryanair airplane is positioned between the cities, illustrating the flight route.
+
+
+
+Center (Comparison):
+
+Between the two boxes, the word “vs.” in bold white text emphasizes the humorous and surprising contrast being drawn: a pizza versus a flight to Pisa for the same price.
+
+
+
+Bottom Section (Tagline and Branding):
+
+Below the two boxes, the ad features the tagline:“The world’s cheapest airline.”
+
+The word “cheapest” is highlighted in yellow, further emphasizing Ryanair’s value proposition.
+
+At the very bottom, the Ryanair logo and name are placed prominently in white and yellow, reinforcing brand recognition.
+
+
+
+Tone and Purpose:
+
+The ad uses humor and an element of surprise to communicate its core message: flying with Ryanair is so inexpensive that it costs as much as an everyday item like pizza. This juxtaposition is designed to grab attention and make the brand’s value proposition memorable.
+
+
+
+Example Image Ad #2:
+
+1. Core Headline:
+
+The core headline of this ad is:"It takes 3.1 seconds to read this ad."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad for Tesla is sleek, minimalist, and impactful, relying on its simplicity and clever messaging to leave an impression.
+
+Background and Layout:
+
+The entire background is clean white, giving the ad a futuristic and minimalist feel while making the text and car stand out sharply.
+
+The layout is structured with text at the top, a blurred image in the middle, and the Tesla logo at the bottom.
+
+
+
+Top Section (Text):
+
+The top portion of the ad features two lines of text in a modern, sans-serif font:
+
+The first line, written in bold black font, states:"It takes 3.1 seconds to read this ad."
+
+This grabs attention with its intriguing claim, creating curiosity.
+
+The second line, written in smaller gray font, explains:"The same time it takes a Model S to go from 0 to 60 mph."
+
+This ties the headline to the product’s performance, highlighting the incredible speed of the Tesla Model S.
+
+
+
+Middle Section (Car Image):
+
+A Tesla Model S is shown in a sleek side profile. The car is depicted in motion, with the rear portion blurred to visually emphasize its acceleration and speed.
+
+The car is black, standing out against the white background and exuding sophistication.
+
+The motion blur creates a sense of dynamism, as if the car is surging forward at high velocity.
+
+
+
+Bottom Section (Logo):
+
+At the very bottom, the iconic Tesla logo is displayed in black text, maintaining the minimalist aesthetic.
+
+The logo anchors the ad, reminding viewers of the brand behind this impressive product.
+
+
+
+Tone and Purpose:
+
+The ad is sophisticated and futuristic, perfectly aligned with Tesla’s branding.
+
+It uses a clever comparison—how long it takes to read the ad versus how long it takes a Tesla Model S to accelerate—to captivate the viewer and highlight the car’s performance.
+
+The simplicity of the design reflects Tesla’s modern and innovative ethos.
+
+
+
+Example Image Ad #3:
+
+1. Core Headline:
+
+The core headline of this ad is:"This is bread. This is breakfast."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This advertisement for Nutella uses a simple and visually appealing transformation concept to show how its product elevates an ordinary breakfast.
+
+
+
+Background and Layout:
+
+The background is entirely white, maintaining a clean and minimalistic aesthetic that focuses the viewer’s attention on the product and its effect.
+
+The layout is symmetrical, with two main images (toasts) displayed side by side in the top half of the ad, accompanied by text below each one.
+
+
+
+Left Side (Bread):
+
+A single slice of plain toasted bread is featured.
+
+The bread is golden brown and evenly toasted, with no additional toppings or spreads.
+
+Below this slice, in a bold, clean black sans-serif font, it says:"This is bread."
+
+This emphasizes the simplicity and plainness of the bread as a standalone item.
+
+
+
+Right Side (Breakfast with Nutella):
+
+Another slice of toasted bread is displayed, but this one is transformed into something more enticing.
+
+The toast is topped with a generous layer of Nutella spread, shaped into a heart in the center, symbolizing love or affection for the product.
+
+The Nutella is glossy and smooth, visually appealing and appetizing.
+
+Below this slice, in the same bold black font, it says:"This is breakfast."
+
+This contrasts the plain bread on the left, showing how Nutella adds flavor and turns bread into a complete breakfast.
+
+
+
+Bottom Section (Tagline and Logo):
+
+Beneath the images, the tagline reads:"Turning bread into breakfast since 1964."
+
+The font is smaller, clean, and centered, subtly reminding viewers of Nutella’s long history of being a beloved breakfast staple.
+
+At the bottom center, the Nutella logo is displayed prominently.
+
+The logo features “nut” in black and “ella” in red, maintaining its recognizable branding.
+
+
+
+Tone and Purpose:
+
+The tone is light, simple, and warm, appealing to families or individuals looking for a way to enhance their breakfast.
+
+The purpose is to demonstrate how Nutella transforms something as ordinary as plain toast into a delicious and enjoyable meal, making it a morning essential.
+
+
+
+Example Image Ad #4:
+
+1. Core Headline:
+
+The core headline of this ad is:"You miss 100% of the shots you don’t take."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad for Patrón tequila uses a clever play on words and a clean, high-end aesthetic to deliver its message.
+
+
+
+Background and Layout:
+
+The background is entirely white, giving the ad a clean, premium feel and making the text and product imagery stand out.
+
+The layout is balanced, with the headline at the top, the product in the center, and the brand logo at the bottom.
+
+
+
+Top Section (Text/Headline):
+
+The headline is written in bold, black serif font, and reads:"You miss 100% of the shots you don’t take."
+
+This is a clever double entendre, referencing both tequila shots and the motivational quote about seizing opportunities.
+
+The phrasing is attention-grabbing and memorable, appealing to a fun yet aspirational audience.
+
+
+
+Center Section (Product Display):
+
+The focal point of the ad is a bottle of Patrón Silver Tequila, placed prominently in the center.
+
+The bottle is transparent, with the clear liquid inside reflecting light for a premium and elegant look.
+
+It features a natural cork stopper, giving it an artisanal, high-quality appearance.
+
+A green and yellow ribbon is tied around the neck of the bottle, adding a subtle pop of color and reinforcing its Mexican heritage.
+
+The bottle label is minimalistic but detailed, with the words “Silver Patrón” in a bold serif font, along with certifications of authenticity, such as “100% de Agave” and “Hecho en Mexico.”
+
+Beside the bottle is a shot glass filled with clear tequila and a single ice cube, suggesting a chilled and refreshing experience.
+
+A lime wedge is placed at the base of the shot glass, reinforcing the tradition of pairing tequila with lime.
+
+
+
+Bottom Section (Logo):
+
+At the bottom center, the Patrón logo is displayed in black.
+
+The logo features a bee icon, symbolic of the brand’s handcrafted, authentic nature.
+
+Below the logo, the word “Tequila” is written in a smaller serif font, emphasizing the product category.
+
+
+
+Tone and Purpose:
+
+The tone is sophisticated yet playful, appealing to tequila enthusiasts who enjoy both quality and fun.
+
+The ad emphasizes Patrón’s premium nature while encouraging the viewer to indulge in the moment, tying the product to a lifestyle of confidence and celebration.
+
+
+
+Example Image Ad #5:
+
+1. Core Headline:
+
+The core headline of this ad is:"Zero stars. Would not recommend."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad for a Bible app combines humor and a subway setting to deliver a memorable and attention-grabbing message.
+
+
+
+Setting and Background:
+
+The ad is part of a subway train interior, positioned on a vertical rectangular advertising panel typically found above the seats or near the doors.
+
+The subway environment is visible, with parts of the train’s metallic poles, walls, and commuters included in the frame.
+
+
+
+Main Design (Ad Panel):
+
+The ad is placed on a black background, giving it a bold and modern appearance that stands out against the surrounding subway interior.
+
+The layout is clean and minimalistic, with white text and simple graphical elements.
+
+
+
+Headline and Visual Elements:
+
+Top Line (Headline):
+
+In bold white text, it says:"Zero stars."
+
+This references the common star-rating system used in reviews, immediately grabbing attention.
+
+Star Rating:
+
+Below the headline, a row of five outlined stars is displayed, all left empty, reinforcing the "zero stars" concept.
+
+Subtext (Humorous Review):
+
+Below the stars, the ad reads:"Would not recommend."
+
+The attribution underneath states:"- Satan"
+
+This injects humor and clever wordplay, suggesting that the Bible app is highly effective, much to Satan’s dismay.
+
+
+
+Bottom Section (Branding):
+
+At the bottom of the ad panel, the logo and name of the app are displayed:
+
+A small Holy Bible icon is shown to the left, recognizable by its brown cover and gold lettering.
+
+Beside it, the app’s name is written in white text:"Bible App."
+
+
+
+Tone and Purpose:
+
+The tone is humorous and cheeky, designed to stand out and engage passersby in a typically mundane setting like a subway.
+
+The ad positions the Bible app as something impactful and potentially life-changing by implying that even Satan disapproves of it.
+
+The use of satire and modern review culture makes the ad relatable and memorable for a broad audience.
+
+
+
+Example Image Ad #6:
+
+1. Core Headline:
+
+The core headline of this ad is:"Usually, when you roll something this good, it's illegal."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad for Chipotle uses humor, clever wordplay, and a simple design to highlight the quality of its burritos.
+
+
+
+Background and Layout:
+
+The background is pure white, creating a clean and minimalist look that directs all attention to the central image and text.
+
+The layout is vertically centered, with the burrito image at the top, the headline in the middle, and the branding at the bottom.
+
+
+
+Top Section (Burrito Image):
+
+A wrapped Chipotle burrito is the main visual element.
+
+The burrito is tightly and neatly wrapped in shiny aluminum foil, giving it a fresh and appetizing appearance.
+
+Its shape is plump and substantial, suggesting a hearty, generously filled meal.
+
+
+
+Middle Section (Headline):
+
+The bold and humorous headline reads:"Usually, when you roll something this good, it's illegal."
+
+The text is in a black, hand-drawn font, giving it a casual, playful vibe that aligns with Chipotle’s approachable brand identity.
+
+The wordplay humorously likens the act of rolling a burrito to rolling something illicit, implying that Chipotle's burritos are so good they seem almost too good to be true.
+
+
+
+Bottom Section (Branding):
+
+At the bottom, the Chipotle logo is displayed in white text on a black, asymmetrical rectangle, resembling a stamp or a label.
+
+Beneath the logo, in smaller black text, it says:"Pass it on. Find yours @ chipotle.com."
+
+This serves as a subtle call-to-action, encouraging viewers to explore Chipotle’s offerings online or share the ad’s message.
+
+
+
+Tone and Purpose:
+
+The tone is cheeky and fun, appealing to a younger, urban audience that appreciates clever humor and high-quality, fresh food.
+
+The ad’s purpose is to emphasize the exceptional quality of Chipotle’s burritos in a way that is memorable, humorous, and shareable.
+
+Example Image Ad #7:
+
+1. Core Headline:
+
+The core headline of this ad is:"Good things take lime."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad for Corona beer artfully blends its product with a relaxing beach setting, emphasizing its association with leisure and refreshment.
+
+
+
+Background and Setting:
+
+The ad is set against a clear blue sky, with fluffy white clouds scattered across it, evoking feelings of tranquility and freedom.
+
+The beach and ocean are visible in the background, with gentle waves lapping against the shore, creating a sense of relaxation and escapism.
+
+The foreground features a weathered wooden surface, likely a beachside table or log, on which the Corona bottle is placed.
+
+
+
+Main Visual Element (Corona Bottle):
+
+The centerpiece of the ad is a bottle of Corona Extra beer, standing upright on the wooden surface.
+
+The bottle is golden and glistening with water droplets, giving it a cold, refreshing appearance, as if just taken out of an ice bucket.
+
+A lime wedge is inserted into the neck of the bottle, reinforcing the iconic way Corona is served.
+
+The label is prominently displayed, with the recognizable blue and gold Corona logo and the tagline “La Cerveza Más Fina” (“The Finest Beer”) printed on it.
+
+
+
+Text and Messaging:
+
+To the left of the bottle, the headline reads:"Good things take lime."
+
+The text is written in a clean, white serif font, standing out against the blue sky background.
+
+This clever play on the phrase "good things take time" ties directly to the lime garnish that is synonymous with Corona beer, making it witty and memorable.
+
+
+
+Branding:
+
+Below the headline, the Corona Extra logo is displayed in white with a gold crown above it, reinforcing brand identity.
+
+
+
+Tone and Purpose:
+
+The tone is relaxed, lighthearted, and aspirational, appealing to people seeking a moment of escape, leisure, or indulgence.
+
+The ad effectively associates Corona beer with idyllic beach vacations and good times, using the lime as a symbol of the unique experience it offers.
+
+
+
+Example Image Ad #8:
+
+The core headline of this ad is:"Need better way to stay cool?"
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad humorously highlights the discomfort of overheating while promoting a cooling comforter as the solution.
+
+
+
+Background and Setting:
+
+The ad is set in a kitchen, with a focus on an open refrigerator as the main backdrop.
+
+The kitchen is dimly lit, with the bright light from the refrigerator providing the primary illumination, emphasizing the theme of seeking coolness.
+
+
+
+Main Visual Elements:
+
+Person Seeking Coolness:
+
+A young woman is lying on the kitchen floor with her head resting on a pillow.
+
+She appears to be sleeping or attempting to cool down by positioning herself near the open refrigerator.
+
+She is dressed lightly, wearing a tank top and shorts, emphasizing the heat and her desperation for relief.
+
+Her expression is peaceful, but the unusual setting (sleeping by the fridge) adds a humorous and relatable touch.
+
+Open Refrigerator:
+
+The fridge is fully stocked with drinks, eggs, and other food items, visually reinforcing the concept of coolness.
+
+The bright interior light draws the eye and creates a stark contrast with the darker kitchen surroundings.
+
+Product Placement (Cooling Comforter):
+
+In the bottom-right corner, the Evercool™ Cooling Comforter is displayed.
+
+The comforter is neatly folded, showing off its bright blue exterior and soft, lightweight material.
+
+The positioning suggests this product as the perfect alternative to the extreme solution of lying by a fridge.
+
+
+
+Text and Branding:
+
+Headline Text:
+
+Positioned to the right of the image, the headline reads:"Need better way to stay cool?"
+
+The font is bold and white, making it easily legible against the darker kitchen background.
+
+Product Name:
+
+At the bottom left, it says:"Evercool™ Cooling Comforter"
+
+The font is clean and modern, emphasizing the brand and product as the ideal solution.
+
+
+
+Tone and Purpose:
+
+The tone is playful and relatable, using humor to draw attention to the problem of overheating.
+
+The ad creates a memorable visual of an exaggerated situation (sleeping by the fridge) to introduce the Evercool™ Cooling Comforter as a practical and superior solution for staying cool and comfortable.
+
+
+
+Example Image Ad #9: 
+
+1. Core Headline:
+
+The core headline of this ad is:"Picks up five times more women than a Lamborghini."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad uses humor and an unexpected comparison to position the Daihatsu Hijet MPV as a practical yet fun alternative to luxury sports cars.
+
+
+
+Background and Setting:
+
+The ad features a Daihatsu Hijet MPV (a compact van) as the centerpiece, positioned on a plain white background. This simple backdrop draws attention to the vehicle and the accompanying text.
+
+
+
+Main Visual Elements:
+
+The Vehicle (Daihatsu Hijet MPV):
+
+The van is small, boxy, and practical-looking, painted in a light silver-gray color.
+
+Its compact design emphasizes utility and efficiency rather than luxury or flashiness.
+
+The MPV is shown fully loaded with six cheerful passengers inside.
+
+The Passengers:
+
+The passengers are five women and one man, all smiling and laughing, enjoying themselves inside the van.
+
+Their body language is casual and lively, suggesting a fun, social atmosphere.
+
+The man in the driver's seat is leaning out of the window with a big smile, suggesting he’s both proud and enjoying the company.
+
+Humorous Context:
+
+The juxtaposition of a small, practical van against a Lamborghini is inherently humorous and unexpected.
+
+By showing the van filled with people having fun, the ad highlights the Daihatsu's spaciousness and social appeal, contrasting with the limited seating capacity of a luxury sports car.
+
+
+
+Text and Messaging:
+
+Headline:
+
+Written in bold, black sans-serif font, the text reads:"Picks up five times more women than a Lamborghini."
+
+The playful wordplay implies that while a Lamborghini might be flashy, the Daihatsu Hijet MPV is the true "babe magnet" due to its practicality and group-friendly design.
+
+
+
+Branding:
+
+On the far right, a vertical red banner displays the Daihatsu logo and branding, keeping the manufacturer's identity visible but secondary to the humor and messaging of the ad.
+
+
+
+Tone and Purpose:
+
+The tone is cheeky, lighthearted, and self-aware, using humor to stand out and engage viewers.
+
+The purpose is to position the Daihatsu Hijet MPV as a practical, fun, and social vehicle that prioritizes utility and shared experiences over luxury and exclusivity.
+
+Example Image Ad #10:
+
+1. Core Headline:
+
+The core headline of this ad is:"We’re Dwayne Johnson’s favourite cereal."*
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad uses humor, bold typography, and a clever twist to promote a cereal brand called Surreal.
+
+
+
+Background and Layout:
+
+The ad is displayed on a large outdoor billboard, creating a striking visual against its urban setting.
+
+The background is a solid salmon-pink color, making the bold black text and imagery stand out.
+
+The layout balances the large headline on the left with the cereal product imagery on the right.
+
+
+
+Main Visual Elements:
+
+Headline (Text Focus):
+
+The headline is written in bold, black sans-serif font and reads:"We’re Dwayne Johnson’s favourite cereal."*
+
+The asterisk immediately hints at a humorous clarification, teasing the viewer to read further.
+
+Fine Print (Clarification):
+
+Below the headline, in smaller black text, the asterisk explanation says:*"Dwayne is a bus driver from London."
+
+This punchline adds a humorous twist, subverting the viewer’s initial assumption that the ad refers to the famous celebrity Dwayne "The Rock" Johnson.
+
+Product Display:
+
+To the right of the headline, there is an image of a blue cereal box labeled "Surreal – Frosted High-Protein Cereal".
+
+Next to the box, a bowl of cereal is shown overflowing, with pieces spilling onto the table surface, creating a casual, playful vibe.
+
+The design of the cereal box is modern, with cartoonish graphics and a clean, minimalist layout.
+
+
+
+Tone and Branding:
+
+The tone is witty, irreverent, and self-aware, using humor to make the ad memorable and engaging.
+
+The playful twist on celebrity endorsements cleverly positions the brand as relatable and down-to-earth, appealing to an audience that appreciates humor and doesn’t take itself too seriously.
+
+The branding “Surreal” reinforces this quirky, unconventional personality.
+
+
+
+Purpose:
+
+The ad aims to grab attention through humor and subversion, using the twist to highlight the cereal’s approachable yet unique identity. The use of bold colors and typography ensures the message is eye-catching even from a distance.
+
+
+
+Example Image Ad #11:
+
+
+
+1. Core Headline:
+
+The core headline of this ad is:"Grab life by the bowls."
+
+
+
+2. Vivid Explanation of the Image Ad:
+
+This ad for Huel emphasizes its nutritious and convenient meal options with an inviting and dynamic display of food.
+
+
+
+Background and Layout:
+
+The background is dark black, creating a strong contrast that makes the bowls of food and text pop out vividly.
+
+The layout features five bowls of colorful meals positioned in an arc, with the headline at the top and product features highlighted around the bowls.
+
+
+
+Main Visual Elements:
+
+Headline:
+
+Centered at the top in bold white text, the headline reads:"Grab life by the bowls."
+
+This playful phrase uses wordplay on the idiom "grab life by the horns," aligning the message with Huel’s promise of taking control of your health with ease and enjoyment.
+
+Bowls of Food:
+
+The centerpiece of the ad is the five black bowls, each filled with visually appealing dishes representing Huel’s meal options.
+
+Front and Center Bowl:
+
+A creamy dish resembling macaroni and cheese, garnished with herbs for an inviting and hearty look.
+
+Surrounding Bowls:
+
+A mix of vibrant options, including grain-based dishes and vegetable-forward meals, all distinct in texture and color.
+
+The steam rising from each bowl suggests freshness and warmth, making the meals look appetizing and ready to eat.
+
+Product Benefits:
+
+Around the bowls, white text highlights the key benefits of Huel’s meals:
+
+“Vegan”: Indicates the meals are plant-based.
+
+“27 vitamins & minerals”: Emphasizes the complete nutritional profile.
+
+“25g protein”: Highlights the high protein content per serving.
+
+“Ready in 5 minutes”: Reinforces convenience and quick preparation.
+
+Branding:
+
+At the bottom-left corner, the Huel logo is displayed in bold white text, reinforcing the brand identity.
+
+
+
+Tone and Purpose:
+
+The tone is bold, empowering, and approachable, encouraging viewers to take charge of their nutrition without sacrificing taste or time.
+
+The ad highlights Huel’s key selling points: convenience, nutrition, and taste, making it appealing to busy individuals seeking quick yet healthy meal options.
+
+
+
+
+
+Ad Writing Instructions For AI - Step 2
+
+Now after creating the nine hooks, please ask me to pick my top 3 hooks (or however many I’d like). After confirming, you will then write out the rest of the image ads describing the images and providing additional text for call outs, if needed, to have a complete concept ready to send over to our editors.
+
+You can use the examples above as a reference for how to describe the image ad and how our editors should bring it to life, however, please keep it more condensed than the examples above.
+
+
+
+Final Rules To Consider For Image Ads:
+
+I want you to consider the following rules prior to writing the headlines and final image ads to ensure they tick all of these boxes:
+
+Assume our target avatar does NOT know about us and does not CARE about us.
+
+Congruency for imagery suggestions must match and emphasize the headline
+
+Make people FEEL something. Make people feel like you understand them.
+
+Be Clear and be concise and keep your language simple
+
+
+

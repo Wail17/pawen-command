@@ -250,7 +250,7 @@ CTA: ${email.cta_text}
                 No emails generated yet
               </h3>
               <p className="text-text-muted text-sm max-w-md mb-6">
-                Click "Generate with AI" to create this sequence using your project&apos;s Brand DNA and voice profile, or "Load Demo Data" to see example emails.
+                Click &quot;Generate with AI&quot; to create this sequence using your project&apos;s Brand DNA and voice profile, or &quot;Load Demo Data&quot; to see example emails.
               </p>
             </div>
           )}

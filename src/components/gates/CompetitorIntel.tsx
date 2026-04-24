@@ -1,21 +1,102 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { CompetitorIntelResult, ClonedFunnel, ReverseEngineeredFunnel, CompetitorMode } from '@/lib/competitor/types';
+import { SubAvatarV2 } from '@/lib/avatars/types';
+import { buildSelectedSubAvatarBrief } from '@/lib/avatars/selectedSubAvatar';
 
 interface CompetitorIntelProps {
   targetLanguage: string;
   targetMarket: string;
+  /**
+   * Optional list of sub-avatars already produced by Gate 1. When provided,
+   * the UI shows an "anchor on existing avatar" picker in reverse mode so the
+   * reverse-engineer maps the competitor's playbook onto one of these avatars
+   * instead of extracting a brand-new one from the competitor's funnel.
+   */
+  projectSubAvatars?: SubAvatarV2[];
   onInjectSubAvatar?: (funnel: ReverseEngineeredFunnel) => void;
   onInjectClone?: (clone: ClonedFunnel) => void;
 }
 
-export default function CompetitorIntel({ targetLanguage, targetMarket, onInjectSubAvatar, onInjectClone }: CompetitorIntelProps) {
+export default function CompetitorIntel({ targetLanguage, targetMarket, projectSubAvatars, onInjectSubAvatar, onInjectClone }: CompetitorIntelProps) {
   const [mode, setMode] = useState<CompetitorMode>('reverse');
   const [urlInput, setUrlInput] = useState('');
+  const [brandDomain, setBrandDomain] = useState('');
+  const [includeSocial, setIncludeSocial] = useState(false);
+  const [groundingAvatarId, setGroundingAvatarId] = useState<string>('');
+  // Structured custom-avatar fields. We force the user to fill the essentials
+  // (name, demographics, pains, desires) because single-line free-text was
+  // producing vague inputs that Claude couldn't map accurately.
+  const [customAvatarName, setCustomAvatarName] = useState('');
+  const [customAvatarDemographics, setCustomAvatarDemographics] = useState('');
+  const [customAvatarPains, setCustomAvatarPains] = useState('');
+  const [customAvatarDesires, setCustomAvatarDesires] = useState('');
+  const [customAvatarFears, setCustomAvatarFears] = useState('');
+  const [customAvatarObjections, setCustomAvatarObjections] = useState('');
+  const [customAvatarAwareness, setCustomAvatarAwareness] = useState('');
+  const [customAvatarVoice, setCustomAvatarVoice] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<CompetitorIntelResult | null>(null);
+
+  const availableAvatars = projectSubAvatars ?? [];
+  const selectedGroundingAvatar = useMemo(
+    () => availableAvatars.find(sa => sa.id === groundingAvatarId) ?? null,
+    [availableAvatars, groundingAvatarId],
+  );
+
+  // Required fields to consider the custom avatar "complete enough" for
+  // Claude to map the competitor accurately. Everything is a soft count:
+  // we want at least 2 pains, 2 desires, and some identity signal.
+  const countBulletLines = (s: string) =>
+    s.split(/\r?\n|\u2022|·|-|\*|;|,/).map(x => x.trim()).filter(x => x.length >= 3).length;
+
+  const customAvatarIssues = useMemo(() => {
+    if (groundingAvatarId !== '__custom__') return [] as string[];
+    const issues: string[] = [];
+    if (customAvatarName.trim().length < 3) issues.push('Give your avatar a name (3+ chars)');
+    if (customAvatarDemographics.trim().length < 10) issues.push('Fill demographics (age, life-stage, location, etc.)');
+    if (countBulletLines(customAvatarPains) < 2) issues.push('At least 2 pain points');
+    if (countBulletLines(customAvatarDesires) < 2) issues.push('At least 2 desires');
+    return issues;
+  }, [groundingAvatarId, customAvatarName, customAvatarDemographics, customAvatarPains, customAvatarDesires]);
+
+  const customAvatarReady = groundingAvatarId === '__custom__' && customAvatarIssues.length === 0;
+
+  const buildCustomAvatarBrief = () => {
+    const lines: string[] = [];
+    lines.push('=== GROUNDING AVATAR (user-provided, structured) ===');
+    lines.push(`Name: ${customAvatarName.trim()}`);
+    lines.push(`Demographics: ${customAvatarDemographics.trim()}`);
+    lines.push('');
+    lines.push('Pain points:');
+    customAvatarPains.split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(p => lines.push(`  - ${p}`));
+    lines.push('');
+    lines.push('Desires:');
+    customAvatarDesires.split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(p => lines.push(`  - ${p}`));
+    if (customAvatarFears.trim()) {
+      lines.push('');
+      lines.push('Fears:');
+      customAvatarFears.split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(p => lines.push(`  - ${p}`));
+    }
+    if (customAvatarObjections.trim()) {
+      lines.push('');
+      lines.push('Objections:');
+      customAvatarObjections.split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(p => lines.push(`  - ${p}`));
+    }
+    if (customAvatarAwareness.trim()) {
+      lines.push('');
+      lines.push(`Awareness level: ${customAvatarAwareness.trim()}`);
+    }
+    if (customAvatarVoice.trim()) {
+      lines.push('');
+      lines.push(`Voice / verbatims: ${customAvatarVoice.trim()}`);
+    }
+    lines.push('');
+    lines.push('=== END GROUNDING AVATAR ===');
+    return lines.join('\n');
+  };
 
   const handleAnalyze = useCallback(async () => {
     const urls = urlInput
@@ -23,8 +104,9 @@ export default function CompetitorIntel({ targetLanguage, targetMarket, onInject
       .map(u => u.trim())
       .filter(u => u.length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
 
-    if (urls.length === 0) {
-      setError('Enter at least one valid URL (https://...)');
+    const domain = brandDomain.trim();
+    if (urls.length === 0 && !domain) {
+      setError('Enter at least one URL or a brand domain for BrandSearch intel');
       return;
     }
 
@@ -32,11 +114,33 @@ export default function CompetitorIntel({ targetLanguage, targetMarket, onInject
     setError('');
     setResult(null);
 
+    if (mode === 'reverse' && groundingAvatarId === '__custom__' && customAvatarIssues.length > 0) {
+      setError(`Fill the avatar form first: ${customAvatarIssues.join(' · ')}`);
+      return;
+    }
+
+    const groundingBrief =
+      mode === 'reverse'
+        ? (groundingAvatarId === '__custom__' && customAvatarReady
+            ? buildCustomAvatarBrief()
+            : selectedGroundingAvatar
+              ? buildSelectedSubAvatarBrief(selectedGroundingAvatar)
+              : undefined)
+        : undefined;
+
     try {
       const res = await fetch('/api/competitor-intel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls, mode, targetLanguage, targetMarket }),
+        body: JSON.stringify({
+          urls,
+          mode,
+          targetLanguage,
+          targetMarket,
+          brandDomain: domain || undefined,
+          includeSocial,
+          groundingAvatar: groundingBrief,
+        }),
       });
 
       if (!res.ok) {
@@ -53,7 +157,12 @@ export default function CompetitorIntel({ targetLanguage, targetMarket, onInject
     } finally {
       setLoading(false);
     }
-  }, [urlInput, mode, targetLanguage, targetMarket]);
+  }, [
+    urlInput, mode, targetLanguage, targetMarket, brandDomain, includeSocial,
+    selectedGroundingAvatar, groundingAvatarId, customAvatarIssues, customAvatarReady,
+    customAvatarName, customAvatarDemographics, customAvatarPains, customAvatarDesires,
+    customAvatarFears, customAvatarObjections, customAvatarAwareness, customAvatarVoice,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -94,6 +203,12 @@ export default function CompetitorIntel({ targetLanguage, targetMarket, onInject
               Extracts the competitor&apos;s sub-avatar (who they target), their mechanism, copy arsenal, creative strategy,
               funnel structure, and strategic insights. You can then inject the extracted sub-avatar into your project
               and deep-dive it for YOUR market ({targetMarket}).
+              {availableAvatars.length > 0 && (
+                <>
+                  {' '}<span className="text-accent-teal font-semibold">Got an avatar already?</span> Pick one below to
+                  map the competitor&apos;s playbook onto YOUR avatar instead of extracting a new one.
+                </>
+              )}
             </p>
           </div>
         ) : (
@@ -108,10 +223,249 @@ export default function CompetitorIntel({ targetLanguage, targetMarket, onInject
         )}
       </div>
 
+      {/* Grounding avatar picker — reverse mode only */}
+      {mode === 'reverse' && (
+        <div className="bg-gradient-to-br from-accent-teal/10 to-accent-orange/5 border border-accent-teal/30 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-bold text-accent-teal uppercase tracking-wider">
+              🎯 Anchor on an existing avatar (optional)
+            </label>
+            {groundingAvatarId && (
+              <button
+                onClick={() => setGroundingAvatarId('')}
+                className="text-[10px] text-text-muted hover:text-text-primary"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-text-muted mb-3 leading-relaxed">
+            Sometimes the competitor isn&apos;t targeting the same person as you.
+            Pick an avatar you already built in Gate 1 and Claude will MAP the
+            competitor&apos;s playbook (hooks, mechanism, creative, insights)
+            onto that avatar instead of extracting a brand-new one.
+          </p>
+          <select
+            value={groundingAvatarId}
+            onChange={(e) => setGroundingAvatarId(e.target.value)}
+            className="w-full px-4 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal"
+          >
+            <option value="">— No grounding (extract new avatar from competitor) —</option>
+            {availableAvatars.length > 0 && (
+              <optgroup label="From Gate 1">
+                {availableAvatars.map((sa) => (
+                  <option key={sa.id} value={sa.id}>
+                    {sa.name}{sa.nickname ? ` — "${sa.nickname}"` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <option value="__custom__">✎ Type it myself (free-text)</option>
+          </select>
+
+          {selectedGroundingAvatar && groundingAvatarId !== '__custom__' && (
+            <div className="mt-3 p-3 bg-bg-primary rounded-lg border border-accent-teal/20">
+              <p className="text-[10px] text-accent-teal uppercase tracking-wider mb-1 font-semibold">Grounding on</p>
+              <p className="text-sm text-text-primary font-medium">{selectedGroundingAvatar.name}</p>
+              {selectedGroundingAvatar.description && (
+                <p className="text-xs text-text-secondary mt-1 leading-snug">{selectedGroundingAvatar.description}</p>
+              )}
+            </div>
+          )}
+
+          {groundingAvatarId === '__custom__' && (
+            <div className="mt-3 space-y-3">
+              <div className="p-3 bg-bg-primary/60 rounded-lg border border-accent-teal/20">
+                <p className="text-[11px] text-text-secondary leading-relaxed">
+                  Fill the essentials so Claude can map accurately. <span className="text-accent-teal font-semibold">Required: name, demographics, 2+ pains, 2+ desires.</span> The more you add, the sharper the mapping.
+                </p>
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="block text-[10px] text-accent-teal uppercase tracking-wider font-semibold mb-1">
+                  Avatar name <span className="text-error">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customAvatarName}
+                  onChange={(e) => setCustomAvatarName(e.target.value)}
+                  placeholder="e.g. Jeanne, 52 ans, working mom"
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal"
+                />
+              </div>
+
+              {/* Demographics */}
+              <div>
+                <label className="block text-[10px] text-accent-teal uppercase tracking-wider font-semibold mb-1">
+                  Demographics <span className="text-error">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customAvatarDemographics}
+                  onChange={(e) => setCustomAvatarDemographics(e.target.value)}
+                  placeholder="Age, life-stage, location, income, family situation…"
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal"
+                />
+              </div>
+
+              {/* Pains */}
+              <div>
+                <label className="block text-[10px] text-accent-teal uppercase tracking-wider font-semibold mb-1">
+                  Pain points <span className="text-error">*</span> <span className="text-text-muted normal-case tracking-normal">(one per line, ≥2)</span>
+                </label>
+                <textarea
+                  value={customAvatarPains}
+                  onChange={(e) => setCustomAvatarPains(e.target.value)}
+                  placeholder={`belly fat after menopause\nlow energy all day\nsleep problems since 50\ntried every diet, nothing works`}
+                  rows={4}
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal resize-y"
+                />
+              </div>
+
+              {/* Desires */}
+              <div>
+                <label className="block text-[10px] text-accent-teal uppercase tracking-wider font-semibold mb-1">
+                  Desires <span className="text-error">*</span> <span className="text-text-muted normal-case tracking-normal">(one per line, ≥2)</span>
+                </label>
+                <textarea
+                  value={customAvatarDesires}
+                  onChange={(e) => setCustomAvatarDesires(e.target.value)}
+                  placeholder={`feel attractive again\nfit her old clothes\nstop being embarrassed at the pool`}
+                  rows={4}
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal resize-y"
+                />
+              </div>
+
+              {/* Fears */}
+              <div>
+                <label className="block text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1">
+                  Fears <span className="normal-case tracking-normal">(optional, one per line)</span>
+                </label>
+                <textarea
+                  value={customAvatarFears}
+                  onChange={(e) => setCustomAvatarFears(e.target.value)}
+                  placeholder={`it's too late to change\nHRT side effects\nbeing alone`}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal resize-y"
+                />
+              </div>
+
+              {/* Objections */}
+              <div>
+                <label className="block text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1">
+                  Objections <span className="normal-case tracking-normal">(optional, one per line)</span>
+                </label>
+                <textarea
+                  value={customAvatarObjections}
+                  onChange={(e) => setCustomAvatarObjections(e.target.value)}
+                  placeholder={`I don't have time\nanother scam\nI've tried everything`}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal resize-y"
+                />
+              </div>
+
+              {/* Awareness */}
+              <div>
+                <label className="block text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1">
+                  Awareness level <span className="normal-case tracking-normal">(optional)</span>
+                </label>
+                <select
+                  value={customAvatarAwareness}
+                  onChange={(e) => setCustomAvatarAwareness(e.target.value)}
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal"
+                >
+                  <option value="">— Pick one —</option>
+                  <option value="Unaware">Unaware (doesn&apos;t know they have the problem)</option>
+                  <option value="Problem Aware">Problem Aware (feels the pain, no solution yet)</option>
+                  <option value="Solution Aware">Solution Aware (knows solutions exist, not your brand)</option>
+                  <option value="Product Aware">Product Aware (knows your product, hesitating)</option>
+                  <option value="Most Aware">Most Aware (ready to buy, needs final push)</option>
+                </select>
+              </div>
+
+              {/* Voice */}
+              <div>
+                <label className="block text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1">
+                  Voice / verbatims <span className="normal-case tracking-normal">(optional — how they talk, what they read, who they trust)</span>
+                </label>
+                <textarea
+                  value={customAvatarVoice}
+                  onChange={(e) => setCustomAvatarVoice(e.target.value)}
+                  placeholder={`blames estrogen, reads French health blogs, trusts MDs more than influencers, says "à mon âge…"`}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent-teal resize-y"
+                />
+              </div>
+
+              {/* Validation panel */}
+              {customAvatarIssues.length > 0 ? (
+                <div className="p-3 bg-error/5 border border-error/30 rounded-lg">
+                  <p className="text-[10px] text-error uppercase tracking-wider font-semibold mb-1">
+                    Still needed before you can run
+                  </p>
+                  <ul className="space-y-0.5">
+                    {customAvatarIssues.map((issue, i) => (
+                      <li key={i} className="text-[11px] text-text-secondary">• {issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="p-3 bg-success/5 border border-success/30 rounded-lg">
+                  <p className="text-[11px] text-success font-semibold">
+                    ✓ Avatar ready — Claude will map the competitor onto this profile.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {availableAvatars.length === 0 && groundingAvatarId === '' && (
+            <div className="mt-3 p-3 bg-bg-primary/60 rounded-lg border border-border text-[11px] text-text-muted">
+              <span className="text-text-secondary font-medium">No sub-avatars from Gate 1 yet.</span>
+              {' '}Pick <span className="text-accent-teal font-semibold">&quot;Type it myself&quot;</span> above to paste your avatar directly, or run Gate 1 first.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* BrandSearch intel */}
+      {mode === 'reverse' && (
+        <div className="bg-gradient-to-br from-accent-orange/10 to-accent-teal/5 border border-accent-orange/30 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-bold text-accent-orange uppercase tracking-wider">
+              ⚡ BrandSearch Full Intel (optional but 10× better)
+            </label>
+            <label className="flex items-center gap-2 text-[10px] text-text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeSocial}
+                onChange={(e) => setIncludeSocial(e.target.checked)}
+                className="accent-accent-orange"
+              />
+              Include TikTok + Instagram
+            </label>
+          </div>
+          <input
+            type="text"
+            value={brandDomain}
+            onChange={(e) => setBrandDomain(e.target.value)}
+            placeholder="competitor.com (pulls full Meta ad library, spend, runtime, products)"
+            className="w-full px-4 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm font-mono focus:outline-none focus:border-accent-orange"
+          />
+          <p className="text-[10px] text-text-muted mt-2 leading-relaxed">
+            Pulls up to 60 Meta ads (headline + body + CTA + spend + runtime + funnel type),
+            product catalog (bestsellers + latest w/ descriptions + prices), brand metadata
+            (niche, USPs, reviews, socials). Longest-running ads = proven winners. This gives
+            the reverse engineer real cross-source evidence instead of guessing from one landing page.
+          </p>
+        </div>
+      )}
+
       {/* URL Input */}
       <div className="bg-bg-card border border-border rounded-xl p-5">
         <label className="block text-xs font-semibold text-text-secondary mb-2">
-          Competitor URL(s) — one per line
+          Competitor URL(s) — one per line {mode === 'reverse' && brandDomain.trim() ? '(optional with BrandSearch)' : ''}
         </label>
         <textarea
           value={urlInput}
@@ -126,7 +480,7 @@ export default function CompetitorIntel({ targetLanguage, targetMarket, onInject
           </p>
           <button
             onClick={handleAnalyze}
-            disabled={loading || !urlInput.trim()}
+            disabled={loading || (!urlInput.trim() && !brandDomain.trim())}
             className={`px-6 py-2.5 font-semibold rounded-lg text-sm text-white disabled:opacity-50 transition-colors ${
               mode === 'reverse'
                 ? 'bg-accent-orange hover:bg-accent-orange-hover'
@@ -199,36 +553,116 @@ function ReverseResults({
   urlsScraped: string[];
   onInject?: (funnel: ReverseEngineeredFunnel) => void;
 }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const topHooks = (data.copy_arsenal?.hooks || []).slice(0, 5);
+  const insights = data.insights || { strengths: [], weaknesses: [], opportunities_for_your_market: [], angles_to_steal: [], angles_to_avoid: [] };
+
+  return (
+    <div className="space-y-4">
+      {/* HEADER — brand + one-click inject */}
+      <div className="bg-gradient-to-br from-accent-orange/10 to-accent-teal/5 border border-accent-orange/30 rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <div className="text-xs uppercase tracking-wider text-accent-orange font-semibold mb-1">Direction</div>
+            <h3 className="text-xl font-bold text-text-primary">{data.competitor_brand}</h3>
+            <p className="text-sm text-text-secondary mt-1">
+              {data.sub_avatar?.name} — <span className="text-accent-orange">{data.sub_avatar?.awareness_level}</span> · Mechanism: <span className="text-accent-teal">{data.mechanism?.name}</span>
+            </p>
+            <p className="text-[11px] text-text-muted mt-2">{urlsScraped.length} page(s) analyzed · {data.funnel_structure?.type || 'funnel'}</p>
+          </div>
+          {onInject && (
+            <button
+              onClick={() => onInject(data)}
+              className="px-5 py-3 bg-accent-orange text-white font-semibold rounded-lg hover:bg-accent-orange-hover text-sm whitespace-nowrap"
+            >
+              → Inject into Gate 1
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 4 ACTIONABLE BLOCKS */}
+      <div className="grid md:grid-cols-2 gap-3">
+        <CheatBlock title="✓ Ce qui marche" tone="green" items={insights.strengths} />
+        <CheatBlock title="⚡ À copier / adapter pour notre marché" tone="orange" items={insights.opportunities_for_your_market} />
+        <CheatBlock title="✗ Ce qu'il faut PAS refaire" tone="red" items={insights.weaknesses} />
+        <CheatBlock title="🎯 Angles à voler" tone="teal" items={insights.angles_to_steal} />
+      </div>
+
+      {/* TOP HOOKS — quick reference */}
+      {topHooks.length > 0 && (
+        <div className="bg-bg-card border border-border rounded-xl p-4">
+          <div className="text-xs uppercase tracking-wider text-text-muted font-semibold mb-2">Top 5 hooks utilisés</div>
+          <ul className="space-y-1.5">
+            {topHooks.map((h, i) => (
+              <li key={i} className="text-sm text-text-primary flex items-start gap-2">
+                <span className="text-accent-orange font-bold">{i + 1}.</span>
+                <span className="flex-1">{typeof h === 'string' ? h : (h as { text?: string; hook?: string }).text || (h as { hook?: string }).hook || JSON.stringify(h)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* ANGLES TO AVOID */}
+      {insights.angles_to_avoid?.length > 0 && (
+        <div className="bg-warning/5 border border-warning/30 rounded-xl p-4">
+          <div className="text-xs uppercase tracking-wider text-warning font-semibold mb-2">⚠️ Angles à éviter</div>
+          <ul className="text-sm text-text-secondary space-y-1">
+            {insights.angles_to_avoid.map((a, i) => <li key={i}>• {a}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* OPTIONAL DETAILS — collapsed by default */}
+      <button
+        onClick={() => setShowDetails(!showDetails)}
+        className="w-full text-center text-xs text-text-muted hover:text-text-primary py-2 border-t border-border"
+      >
+        {showDetails ? '▲ Masquer les détails bruts' : '▼ Voir données brutes (avatar / mécanisme / copy / funnel)'}
+      </button>
+
+      {showDetails && <ReverseDetails data={data} />}
+    </div>
+  );
+}
+
+function CheatBlock({ title, items, tone }: { title: string; items: string[]; tone: 'green' | 'orange' | 'red' | 'teal' }) {
+  if (!items?.length) return null;
+  const colors: Record<string, string> = {
+    green: 'border-success/40 bg-success/5',
+    orange: 'border-accent-orange/40 bg-accent-orange/5',
+    red: 'border-error/40 bg-error/5',
+    teal: 'border-accent-teal/40 bg-accent-teal/5',
+  };
+  return (
+    <div className={`border rounded-xl p-4 ${colors[tone]}`}>
+      <div className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2">{title}</div>
+      <ul className="text-sm text-text-secondary space-y-1.5">
+        {items.slice(0, 5).map((it, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="text-text-muted">•</span>
+            <span className="flex-1 leading-snug">{it}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ReverseDetails({ data }: { data: ReverseEngineeredFunnel }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    avatar: true,
-    mechanism: true,
+    avatar: false,
+    mechanism: false,
     copy: false,
     creative: false,
     funnel: false,
-    insights: true,
   });
 
   const toggle = (key: string) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between bg-bg-card border border-accent-orange/30 rounded-xl p-4">
-        <div>
-          <h3 className="text-base font-bold text-text-primary">{data.competitor_brand}</h3>
-          <p className="text-xs text-text-muted mt-0.5">
-            Analyzed {urlsScraped.length} page(s) — {data.funnel_structure?.type || 'funnel'}
-          </p>
-        </div>
-        {onInject && (
-          <button
-            onClick={() => onInject(data)}
-            className="px-5 py-2.5 bg-accent-orange text-white font-semibold rounded-lg hover:bg-accent-orange-hover text-sm"
-          >
-            Inject Sub-Avatar into Project
-          </button>
-        )}
-      </div>
 
       {/* Sub-Avatar */}
       <Section
@@ -420,26 +854,6 @@ function ReverseResults({
         </div>
       </Section>
 
-      {/* Strategic Insights */}
-      <Section
-        title="Strategic Insights"
-        icon="💡"
-        color="teal"
-        expanded={expanded.insights}
-        onToggle={() => toggle('insights')}
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <ListBlock label="Strengths (learn from)" items={data.insights.strengths} color="green" />
-            <ListBlock label="Weaknesses (exploit)" items={data.insights.weaknesses} color="red" />
-          </div>
-          <ListBlock label="Opportunities for Your Market" items={data.insights.opportunities_for_your_market} color="teal" />
-          <div className="grid grid-cols-2 gap-4">
-            <ListBlock label="Angles to Steal" items={data.insights.angles_to_steal} color="green" />
-            <ListBlock label="Angles to Avoid" items={data.insights.angles_to_avoid} color="red" />
-          </div>
-        </div>
-      </Section>
     </div>
   );
 }

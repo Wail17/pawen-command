@@ -20,7 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { AppUserRow } from '@/lib/db/schema';
 
-type Tab = 'overview' | 'users' | 'projects' | 'audit' | 'logins' | 'env' | 'curate';
+type Tab = 'overview' | 'users' | 'projects' | 'audit' | 'logins' | 'env' | 'curate' | 'autonomous';
 
 type Me = { authenticated: boolean; user?: { name: string; role: string } };
 
@@ -103,6 +103,7 @@ export default function AdminPage() {
             ['logins', 'Login IPs'],
             ['env', 'Environment'],
             ['curate', 'Curation'],
+            ['autonomous', 'Autonomous (Phase U)'],
           ] as Array<[Tab, string]>).map(([id, label]) => (
             <button
               key={id}
@@ -127,6 +128,7 @@ export default function AdminPage() {
         {tab === 'logins' && <LoginIPsTab />}
         {tab === 'env' && <EnvTab />}
         {tab === 'curate' && <CurateTab />}
+        {tab === 'autonomous' && <AutonomousTab />}
       </main>
     </div>
   );
@@ -1025,6 +1027,41 @@ function CurateTab() {
       >
         Open curation panel →
       </Link>
+    </div>
+  );
+}
+
+// ============================================================
+// Autonomous (Phase U) tab — links to distillations + constitutions
+// ============================================================
+
+function AutonomousTab() {
+  const flagOn = process.env.NEXT_PUBLIC_USE_AUTONOMOUS_MODE === '1';
+  return (
+    <div className="space-y-4">
+      <div className="bg-bg-card border border-border rounded-xl p-6">
+        <h3 className="text-text-primary text-sm font-semibold mb-2">Phase U — Autonomous mode</h3>
+        <p className="text-text-muted text-xs mb-3">
+          Baked-in per-persona expertise (U.1) + self-written constitutions (U.2). Master flag
+          <code className="mx-1 px-1 bg-black/40 rounded">NEXT_PUBLIC_USE_AUTONOMOUS_MODE</code>
+          is currently <span className={flagOn ? 'text-emerald-400' : 'text-yellow-300'}>{flagOn ? 'ON' : 'OFF'}</span>.
+          When OFF the legacy runtime-RAG path is used; when ON, agents inject their distilled corpus and skip the chunk-level training injection.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/admin/distillations"
+            className="inline-block px-4 py-2 bg-accent-orange text-white text-sm font-semibold rounded-lg hover:bg-accent-orange-hover"
+          >
+            Persona distillations (U.1) →
+          </Link>
+          <Link
+            href="/admin/constitutions"
+            className="inline-block px-4 py-2 border border-accent-orange text-accent-orange text-sm font-semibold rounded-lg hover:bg-accent-orange/10"
+          >
+            Agent constitutions (U.2) →
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

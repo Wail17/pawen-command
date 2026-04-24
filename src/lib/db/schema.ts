@@ -137,3 +137,26 @@ export interface GateOutputsMirrorRow {
   created_at: string;
   updated_at: string;
 }
+
+// === Pipeline jobs (background execution) ===
+export type PipelineJobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type PipelineJobType = 'avatar_excavation' | 'deep_dive';
+
+export interface PipelineJobRow {
+  id: string;
+  owner: string;
+  project_id: string;
+  gate_id: string;
+  type: PipelineJobType;
+  status: PipelineJobStatus;
+  phase: string;
+  payload: Record<string, unknown>;   // initial input
+  state: Record<string, unknown>;     // accumulated phase outputs
+  progress: { phase?: string; message?: string; percent?: number; itemCount?: number };
+  result: Record<string, unknown> | null;
+  error: string | null;
+  tick_count: number;
+  created_at: string;
+  updated_at: string;
+  heartbeat_at: string;
+}

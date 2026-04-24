@@ -4,7 +4,8 @@
 // Like a real agency: workers → manager → director
 // ============================================================
 
-import { GateOutput, GateId, ReviewResult, CongruenceResult, BrandDNA, GenerationLogEntry, Project } from '../types';
+import { GateOutput, GateId, ReviewResult, CongruenceResult, BrandDNA, GenerationLogEntry, Project, FunnelType } from '../types';
+import { getSelectedSubAvatar, resolveFunnelForSubAvatar } from '../avatars/selectedSubAvatar';
 import { GateConfigDef } from '../gates/types';
 import { getModelForRole } from '../ai/providers';
 import { saveGateOutput, getKnowledgeForGate } from '../store/db';
@@ -12,9 +13,11 @@ import { extractJSON as extractJSONShared } from '../util/extractJson';
 import { runSubAgents } from './runSubAgents';
 import { AGENT_PERSONAS, getPersonaForGate, buildPersonaPrompt, buildKnowledgePrompt, buildMemoryPrompt, buildTrainingPrompt } from './personas';
 import { getRelevantMemories, learnFromErrors } from './memory';
-import { getTrainingChunksForGate } from '../store/db';
+import { getTrainingChunksForGate, getPersonaDistillation, getAgentConstitution } from '../store/db';
 import { buildLearningInjection } from '../learning/inject';
+import { isAutonomousModeEnabled } from '../learning/autonomousMode';
 import { captureFromScore } from '../learning/capture';
+import { notifyGateStart, notifyGateEnd, notifyGateError, extractPreview } from '../notifications/discord';
 
 export interface RunGateParams {
   gateId: GateId;
@@ -24,6 +27,11 @@ export interface RunGateParams {
   previousGateOutputs: Record<string, unknown>;
   maxReviewIterations: number;
   maxCongruenceIterations?: number;
+  // Batch-run overrides: when running N sub-avatars in parallel, caller passes
+  // the specific SA + funnel for this pipeline branch. When absent, runGate
+  // falls back to project.selectedSubAvatarId / project.selectedFunnel.
+  subAvatarIdOverride?: string;
+  funnelOverride?: FunnelType;
   onStreamChunk?: (chunk: string) => void;
   onStatusChange?: (status: string) => void;
   onLogEntry?: (entry: GenerationLogEntry) => void;
@@ -78,7 +86,7 @@ async function callAPI(
 
     const decoder = new TextDecoder();
     let fullContent = '';
-    let tokensUsed = { input: 0, output: 0 };
+    const tokensUsed = { input: 0, output: 0 };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -129,10 +137,19 @@ export async function runGate(params: RunGateParams): Promise<RunGateResult> {
     config,
     previousGateOutputs,
     maxReviewIterations,
+    subAvatarIdOverride,
+    funnelOverride,
     onStreamChunk,
     onStatusChange,
     onLogEntry,
   } = params;
+
+  // Resolve the effective sub-avatar + funnel for this run.
+  // In batch mode, caller passes per-SA overrides; in single-SA mode we fall
+  // back to project-level selections.
+  const effectiveSubAvatar = getSelectedSubAvatar(project, previousGateOutputs, subAvatarIdOverride);
+  const effectiveSubAvatarId = effectiveSubAvatar?.id ?? project.selectedSubAvatarId;
+  const effectiveFunnel = resolveFunnelForSubAvatar(effectiveSubAvatar, project, funnelOverride);
 
   const generationLog: GenerationLogEntry[] = [];
   const totalTokens = { input: 0, output: 0 };
@@ -175,10 +192,13 @@ RULES:
   // This tells every downstream agent exactly which awareness funnel and
   // which sub-avatar they're building for, so all copy, hooks, and angles
   // stay laser-focused on the chosen strategic lane.
+  //
+  // In batch mode (Matrix): effectiveSubAvatar + effectiveFunnel are per-SA
+  // overrides; in single-SA mode they fall back to project-level selections.
   let funnelContext = '';
-  if (project.selectedFunnel || project.selectedSubAvatarId) {
+  if (effectiveFunnel || effectiveSubAvatar) {
     const parts: string[] = ['=== STRATEGIC CONTEXT ==='];
-    if (project.selectedFunnel) {
+    if (effectiveFunnel) {
       const funnelDescriptions: Record<string, string> = {
         full_unaware: "Prospect doesn't know they have a problem. Disrupt, educate, create the 'aha' moment. Long-form, story-driven, identity hooks.",
         problem_aware: "Prospect feels the pain but hasn't searched for solutions. Agitate the wound, name their experience, then introduce the solution category.",
@@ -187,24 +207,28 @@ RULES:
         most_aware: "Prospect is ready to buy. Direct response: price, offer, scarcity, bonuses, guarantee. No education needed.",
         retargeting: "Prospect already engaged (visited site, watched video, added to cart). Reminder ads, social proof, limited-time incentive, abandoned cart recovery.",
       };
-      parts.push(`FUNNEL: ${project.selectedFunnel.toUpperCase().replace(/_/g, ' ')}`);
-      parts.push(`FUNNEL STRATEGY: ${funnelDescriptions[project.selectedFunnel] ?? ''}`);
+      parts.push(`FUNNEL: ${effectiveFunnel.toUpperCase().replace(/_/g, ' ')}`);
+      parts.push(`FUNNEL STRATEGY: ${funnelDescriptions[effectiveFunnel] ?? ''}`);
       parts.push('ALL copy, hooks, headlines, and angles MUST be calibrated to this awareness level. Do NOT write copy for a different awareness stage.');
     }
-    if (project.selectedSubAvatarId && project.avatarRunResult) {
-      const sa = project.avatarRunResult.sub_avatars.find(
-        (s) => s.id === project.selectedSubAvatarId,
-      );
-      if (sa) {
+    if (effectiveSubAvatar) {
+      const sa = effectiveSubAvatar;
+      parts.push('');
+      parts.push(`FOCUSED SUB-AVATAR: ${sa.name} ("${sa.nickname}")`);
+      parts.push(`DESCRIPTION: ${sa.description}`);
+      parts.push(`DOMINANT CATEGORY: ${sa.dominant_category}`);
+      parts.push(`EMOTIONAL TRIGGERS: ${(sa.emotional_triggers ?? []).join(', ')}`);
+      parts.push(`PAST ATTEMPTS/FAILURES: ${(sa.past_attempts_failures ?? []).join('; ')}`);
+      const topQuotes = (sa.verbatim_quotes ?? []).slice(0, 5).map((v) => `"${v.quote}"`);
+      if (topQuotes.length > 0) {
+        parts.push(`KEY VERBATIMS: ${topQuotes.join(' | ')}`);
+      }
+      if (sa.market_sophistication) {
         parts.push('');
-        parts.push(`FOCUSED SUB-AVATAR: ${sa.name} ("${sa.nickname}")`);
-        parts.push(`DESCRIPTION: ${sa.description}`);
-        parts.push(`DOMINANT CATEGORY: ${sa.dominant_category}`);
-        parts.push(`EMOTIONAL TRIGGERS: ${(sa.emotional_triggers ?? []).join(', ')}`);
-        parts.push(`PAST ATTEMPTS/FAILURES: ${(sa.past_attempts_failures ?? []).join('; ')}`);
-        const topQuotes = (sa.verbatim_quotes ?? []).slice(0, 5).map((v) => `"${v.quote}"`);
-        if (topQuotes.length > 0) {
-          parts.push(`KEY VERBATIMS: ${topQuotes.join(' | ')}`);
+        parts.push(`MARKET SOPHISTICATION (Schwartz): Stage ${sa.market_sophistication.stage} — ${sa.market_sophistication.stage_name}`);
+        parts.push(`RECOMMENDED APPROACH: ${sa.market_sophistication.recommended_approach}`);
+        if (sa.market_sophistication.copy_implications?.length) {
+          parts.push(`COPY IMPLICATIONS: ${sa.market_sophistication.copy_implications.join(' | ')}`);
         }
       }
     }
@@ -307,12 +331,23 @@ RULES:
 
   // Build persona + KB + training + memory enrichment for lead agent
   const leadPersona = getPersonaForGate(gateId);
+  const autonomous = isAutonomousModeEnabled();
+
+  // Phase U: when autonomous mode is ON and a distillation/constitution is
+  // present for this persona, load them. `buildPersonaPrompt` will inline
+  // both. The runtime-RAG training-chunk pull is skipped (the distillation
+  // already embeds that material). If no distillation exists yet, we fall
+  // back to the legacy path so the first-run UX never produces empty prompts.
+  const distillation = autonomous ? (await getPersonaDistillation(leadPersona.id)) ?? null : null;
+  const constitution = autonomous ? (await getAgentConstitution(leadPersona.id)) ?? null : null;
+  const useBakedInExpertise = !!(autonomous && distillation);
+
   const kbEntries = await getKnowledgeForGate(gateId);
-  const trainingChunks = await getTrainingChunksForGate(gateId);
+  const trainingChunks = useBakedInExpertise ? [] : await getTrainingChunksForGate(gateId);
   const leadMemories = await getRelevantMemories(leadPersona.id, 8);
 
-  let personaPrefix = buildPersonaPrompt(leadPersona) + '\n\n';
-  if (trainingChunks.length > 0) {
+  let personaPrefix = buildPersonaPrompt(leadPersona, { distillation, constitution }) + '\n\n';
+  if (!useBakedInExpertise && trainingChunks.length > 0) {
     personaPrefix += buildTrainingPrompt(
       trainingChunks.map(c => ({ sourceName: c.sourceName, content: c.content, summary: c.summary }))
     ) + '\n\n';
@@ -332,12 +367,16 @@ RULES:
   const learningBlock = await buildLearningInjection({
     gateId,
     niche: project.niche || '',
-    funnel: project.selectedFunnel || 'any',
+    funnel: effectiveFunnel || 'any',
     adPerformance: project.adPerformance,
+    copyFormat: project.selectedCopyFormat,
   });
   if (learningBlock) {
     personaPrefix += learningBlock + '\n\n';
   }
+
+  const __notifStart = Date.now();
+  notifyGateStart(gateId, projectId, project.name);
 
   try {
     // ================================================================
@@ -555,7 +594,18 @@ ${managerParsedFull.reviews.map(r =>
 === USE THIS ASSESSMENT TO GUIDE YOUR COMPILATION ===\n`;
     }
 
-    const systemPrompt = personaPrefix + brandDNAPrefix + funnelContext + productContext + managerGuidance + config.generatorPrompt(project, subAgentOutputs, previousGateOutputs);
+    // Swipe Vault — global library of winners/losers/big-swings feeds the agent
+    // with validated patterns (what to emulate) and avoid-lists (what not to repeat).
+    let swipeVaultBlock = '';
+    try {
+      const { buildSwipeVaultPrompt } = await import('@/lib/swipeVault/promptInjector');
+      swipeVaultBlock = await buildSwipeVaultPrompt({
+        niche: project.niche,
+        awarenessLevel: effectiveFunnel,
+      });
+    } catch { /* optional */ }
+
+    const systemPrompt = personaPrefix + brandDNAPrefix + funnelContext + productContext + swipeVaultBlock + managerGuidance + config.generatorPrompt(project, subAgentOutputs, previousGateOutputs);
 
     // Build compact product reminder for END of user message (recency bias fix).
     // LLMs pay most attention to start + end of prompts. The full productContext
@@ -575,19 +625,45 @@ BRAND: ${sd.vendor || 'N/A'}${sd.reviewStats ? `\nREVIEW PROOF: ${sd.reviewStats
 
     const userMsg = previousContext + config.userMessage(project, previousGateOutputs, subAgentOutputs) + productReminder;
 
-    let genResult = await callAPI(
-      '/api/generate',
-      {
-        model: generatorModel.model,
-        systemPrompt,
-        userMessage: userMsg,
-        temperature: 0.7,
-        maxTokens: config.generatorMaxTokens ?? generatorModel.maxTokens,
-        cacheControl: true,
-      },
-      onStreamChunk,
-      !!onStreamChunk,
-    );
+    // Lead agent compile: 24k-token Opus output can hit the 295s /api/generate
+    // ceiling on Anthropic tier-1 (8k OTPM). If primary fails with a
+    // timeout/overload error, retry with halved budget for graceful degradation.
+    const primaryGenMax = config.generatorMaxTokens ?? generatorModel.maxTokens;
+    const fallbackGenMax = Math.max(4000, Math.floor(primaryGenMax / 2));
+    let genResult: { content: string; tokensUsed: { input: number; output: number } };
+    try {
+      genResult = await callAPI(
+        '/api/generate',
+        {
+          model: generatorModel.model,
+          systemPrompt,
+          userMessage: userMsg,
+          temperature: 0.7,
+          maxTokens: primaryGenMax,
+          cacheControl: true,
+        },
+        onStreamChunk,
+        !!onStreamChunk,
+      );
+    } catch (err) {
+      // Retry on ANY primary failure (network drop "Failed to fetch",
+      // timeout/abort, 5xx, rate-limit). Fallback uses a smaller budget so
+      // it finishes faster under the 295s /api/generate ceiling.
+      if (primaryGenMax <= fallbackGenMax) throw err;
+      genResult = await callAPI(
+        '/api/generate',
+        {
+          model: generatorModel.model,
+          systemPrompt,
+          userMessage: userMsg,
+          temperature: 0.7,
+          maxTokens: fallbackGenMax,
+          cacheControl: true,
+        },
+        onStreamChunk,
+        !!onStreamChunk,
+      );
+    }
 
     addTokens(genResult.tokensUsed);
     addLog({
@@ -598,6 +674,7 @@ BRAND: ${sd.vendor || 'N/A'}${sd.reviewStats ? `\nREVIEW PROOF: ${sd.reviewStats
         ? `Lead agent compiling ${Object.keys(subAgentOutputs).length} sub-agent outputs${managerReview ? ' (with manager guidance)' : ''}`
         : `Gate ${gateId} generation`,
       output_summary: genResult.content.slice(0, 200) + '...',
+      raw_output: genResult.content,
       tokens_used: genResult.tokensUsed,
     });
 
@@ -641,16 +718,52 @@ ${config.reviewerPrompt}
 
 You've seen hundreds of outputs. You know what "good" looks like. Don't settle for mediocre.`;
 
+    // Helper: produce a reviewable content string with sub-agent backfill applied.
+    // Lead compiler truncates on heavy gates (G4): sections disappear → Léa scores
+    // low → expensive retry loop. By backfilling before review, Léa sees complete
+    // data and scores accurately.
+    const isEmptyVal = (v: unknown): boolean => {
+      if (v == null) return true;
+      if (Array.isArray(v)) return v.length === 0;
+      if (typeof v === 'object') return Object.keys(v as object).length === 0;
+      if (typeof v === 'string') return v.trim().length === 0;
+      return false;
+    };
+    const backfillContent = (compilerOutput: string): string => {
+      if (!subAgentOutputs || Object.keys(subAgentOutputs).length === 0) return compilerOutput;
+      const parsed = extractJSON(compilerOutput);
+      if (!parsed || typeof parsed !== 'object') return compilerOutput;
+      const merged = { ...parsed } as Record<string, unknown>;
+      let added = false;
+      for (const agentOutput of Object.values(subAgentOutputs)) {
+        if (!agentOutput || typeof agentOutput !== 'string') continue;
+        try {
+          const sub = extractJSON(agentOutput);
+          if (!sub || typeof sub !== 'object') continue;
+          for (const [key, value] of Object.entries(sub as Record<string, unknown>)) {
+            if (key === 'reviewResult' || key === 'metadata') continue;
+            if (isEmptyVal(merged[key]) && !isEmptyVal(value)) {
+              merged[key] = value;
+              added = true;
+            }
+          }
+        } catch { /* skip */ }
+      }
+      if (!added) return compilerOutput;
+      return '```json\n' + JSON.stringify(merged, null, 2) + '\n```';
+    };
+
     let reviewResult: ReviewResult | null = null;
-    let bestOutput = genResult.content;
+    let bestOutput = backfillContent(genResult.content);
     let bestScore = 0;
 
     for (let i = 0; i < maxReviewIterations; i++) {
+      const reviewableContent = backfillContent(genResult.content);
       const reviewResponse = await callAPI('/api/review', {
         model: directorModel.model,
         systemPrompt: directorPrompt,
         userMessage: `=== CONTENT TO REVIEW (Gate: ${gateId}) ===
-${genResult.content}
+${reviewableContent}
 
 === REVIEW CRITERIA ===
 ${config.reviewCriteria}
@@ -702,14 +815,17 @@ Respond in valid JSON with this structure:
         tokens_used: reviewResponse.tokensUsed,
       });
 
-      // Circuit breaker: if score decreased, stop and keep best
-      if (reviewResult!.percentage < bestScore && i > 0) {
+      // Circuit breaker: stop on decrease OR stagnation (≤3% swing vs best).
+      // Previous version only tripped on strict decrease — identical scores
+      // across 3 iterations would burn 3× Opus runs for the same verdict.
+      const delta = reviewResult!.percentage - bestScore;
+      if (i > 0 && delta <= 3) {
         addLog({
           agent: 'director',
           model: directorModel.model,
           iteration: i + 1,
           input_summary: 'Circuit breaker — Léa stops the loop',
-          output_summary: `Score not improving (${reviewResult!.percentage}% <= ${bestScore}%). Keeping best output.`,
+          output_summary: `Score stagnated (${reviewResult!.percentage}% vs best ${bestScore}%, Δ=${delta}). Keeping best output.`,
         });
         genResult = { content: bestOutput, tokensUsed: { input: 0, output: 0 } };
         break;
@@ -717,7 +833,7 @@ Respond in valid JSON with this structure:
 
       if (reviewResult!.percentage > bestScore) {
         bestScore = reviewResult!.percentage;
-        bestOutput = genResult.content;
+        bestOutput = reviewableContent;
       }
 
       if (reviewResult!.passed) break;
@@ -741,6 +857,7 @@ ${reviewResult!.dimensions?.map((d: { name: string; score: number; maxScore: num
 
 Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
             temperature: 0.7,
+            maxTokens: config.generatorMaxTokens ?? generatorModel.maxTokens,
             cacheControl: true,
           },
           onStreamChunk,
@@ -754,8 +871,23 @@ Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
           iteration: i + 2,
           input_summary: `Re-generation with Léa's feedback (iteration ${i + 2})`,
           output_summary: genResult.content.slice(0, 200) + '...',
+          raw_output: genResult.content,
           tokens_used: genResult.tokensUsed,
         });
+
+        // ABORT: if lead compiler returns 0 output tokens, it froze (too much to emit).
+        // Retrying costs ~$1.20 per attempt and will freeze again. Break and keep best.
+        if ((genResult.tokensUsed?.output ?? 0) === 0) {
+          addLog({
+            agent: 'lead',
+            model: generatorModel.model,
+            iteration: i + 2,
+            input_summary: 'Circuit breaker — 0 output tokens (compiler froze)',
+            output_summary: 'Skipping further retries to avoid burning tokens. Keeping best prior output.',
+          });
+          genResult = { content: bestOutput, tokensUsed: { input: 0, output: 0 } };
+          break;
+        }
       }
     }
 
@@ -805,10 +937,12 @@ Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
       }).catch(() => {}); // fire-and-forget, never block the pipeline
     }
 
-    // Save checkpoint
+    // Save checkpoint — tagged with effectiveSubAvatarId so the per-SA key is used
+    // in batch mode (falls back to shared key when no SA override).
     const intermediateOutput: GateOutput = {
       gateId,
       projectId,
+      subAvatarId: effectiveSubAvatarId,
       status: 'pending_decisions',
       data: { rawContent: bestOutput },
       generationLog,
@@ -822,7 +956,54 @@ Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
     await saveGateOutput(intermediateOutput);
 
     // Parse output to structured JSON
-    const parsedOutput = extractJSON(bestOutput);
+    const parsedOutput = extractJSON(bestOutput) ?? {} as Record<string, unknown>;
+
+    // SUB-AGENT BACKFILL: Lead compiler physically can't re-emit 60k+ output tokens
+    // in a single pass (Opus 32k ceiling). When it truncates, top-level keys go missing.
+    // Fill any missing/empty keys from the corresponding sub-agent outputs — they're
+    // already complete by design. This is idempotent and gate-agnostic.
+    if (subAgentOutputs) {
+      const isEmpty = (v: unknown): boolean => {
+        if (v == null) return true;
+        if (Array.isArray(v)) return v.length === 0;
+        if (typeof v === 'object') return Object.keys(v as object).length === 0;
+        if (typeof v === 'string') return v.trim().length === 0;
+        return false;
+      };
+      for (const [agentId, agentOutput] of Object.entries(subAgentOutputs)) {
+        if (!agentOutput || typeof agentOutput !== 'string') continue;
+        try {
+          const parsed = extractJSON(agentOutput);
+          if (!parsed || typeof parsed !== 'object') continue;
+          for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+            if (key === 'reviewResult' || key === 'metadata') continue;
+            if (isEmpty(parsedOutput[key]) && !isEmpty(value)) {
+              parsedOutput[key] = value;
+              addLog({
+                agent: 'lead',
+                model: generatorModel.model,
+                iteration: 0,
+                input_summary: `Backfill from ${agentId}`,
+                output_summary: `Restored missing "${key}" from sub-agent (compiler truncated).`,
+              });
+            }
+          }
+        } catch {
+          // sub-agent output not parseable — skip
+        }
+      }
+    }
+
+    const __endStatus: 'pending_decisions' | 'stuck' = reviewResult?.passed ? 'pending_decisions' : 'stuck';
+    notifyGateEnd({
+      gateId,
+      projectId,
+      projectName: project.name,
+      durationMs: Date.now() - __notifStart,
+      preview: extractPreview(gateId, parsedOutput),
+      score: reviewResult?.percentage,
+      status: __endStatus,
+    });
 
     return {
       output: bestOutput,
@@ -832,7 +1013,7 @@ Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
       congruenceResult: null,
       generationLog,
       subAgentOutputs,
-      status: reviewResult?.passed ? 'pending_decisions' : 'stuck',
+      status: __endStatus,
       totalTokens,
     };
   } catch (error) {
@@ -843,6 +1024,14 @@ Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
       iteration: 0,
       input_summary: 'Error',
       output_summary: message,
+    });
+
+    notifyGateError({
+      gateId,
+      projectId,
+      projectName: project.name,
+      durationMs: Date.now() - __notifStart,
+      error: message,
     });
 
     return {
@@ -877,11 +1066,38 @@ export async function runCongruenceCheck(params: {
     content,
     brandDNA,
     congruencePrompt,
-    previousGateOutputs,
     maxIterations = 2,
     threshold = 85,
     onStatusChange,
   } = params;
+
+  // Slim brandDNA payload — congruence only needs rules, not research.
+  // Full brandDNA can be 50k+ chars; trimmed version stays under 5k for fast checks.
+  const slimBrandDNA = {
+    product_name: brandDNA.product_name,
+    brand_name: brandDNA.brand_name,
+    target_market: brandDNA.target_market,
+    target_language: brandDNA.target_language,
+    locked_terms: brandDNA.locked_terms,
+    always_use: brandDNA.customer_language?.always_use ?? [],
+    never_use: brandDNA.customer_language?.never_use ?? [],
+    conditional_use: brandDNA.customer_language?.conditional_use ?? [],
+    emotional_arc: {
+      primary_emotion: brandDNA.emotional_arc?.primary_emotion,
+      secondary_emotion: brandDNA.emotional_arc?.secondary_emotion,
+      resolution_emotion: brandDNA.emotional_arc?.resolution_emotion,
+    },
+    voice: {
+      sentence_style: brandDNA.voice_profile?.sentence_style,
+      formality_level: brandDNA.voice_profile?.formality_level,
+      emotional_tone: brandDNA.voice_profile?.emotional_tone,
+      phrases_to_use: brandDNA.voice_profile?.phrases_to_use,
+      phrases_to_avoid: brandDNA.voice_profile?.phrases_to_avoid,
+    },
+    visual_metaphor: brandDNA.visual_identity?.metaphor ?? null,
+    product_specs: brandDNA.product_specs,
+    proof_inventory: brandDNA.proof_inventory,
+  };
 
   const log: GenerationLogEntry[] = [];
   const reviewerModel = getModelForRole('congruence');
@@ -895,11 +1111,8 @@ export async function runCongruenceCheck(params: {
     const response = await callAPI('/api/congruence', {
       model: reviewerModel.model,
       systemPrompt: congruencePrompt,
-      userMessage: `=== BRAND DNA ===
-${JSON.stringify(brandDNA, null, 2)}
-
-=== PREVIOUS GATE OUTPUTS ===
-${JSON.stringify(previousGateOutputs, null, 2)}
+      userMessage: `=== BRAND DNA (rules only — research trimmed for speed) ===
+${JSON.stringify(slimBrandDNA, null, 2)}
 
 === CONTENT TO CHECK (Gate: ${gateId}) ===
 ${currentContent}
@@ -977,7 +1190,7 @@ Respond in valid JSON:
       const regenResponse = await callAPI('/api/generate', {
         model: generatorModel.model,
         systemPrompt: `=== BRAND DNA (DO NOT DEVIATE) ===
-${JSON.stringify(brandDNA, null, 2)}
+${JSON.stringify(slimBrandDNA, null, 2)}
 
 You are revising content to fix congruence issues. Apply the alignment instructions precisely.`,
         userMessage: `=== ORIGINAL CONTENT ===

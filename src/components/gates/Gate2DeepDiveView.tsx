@@ -662,12 +662,17 @@ function CategorySection({
   reviewed: boolean;
   onToggleReviewed: () => void;
 }) {
-  const [open, setOpen] = useState(!reviewed);
-
-  // When marking reviewed, auto-collapse. Uncollapse on un-review.
-  useEffect(() => {
-    setOpen(!reviewed);
-  }, [reviewed]);
+  // Derived open state — defaults to !reviewed, user can override locally.
+  // The override resets whenever `reviewed` flips, so toggling review
+  // re-syncs (expand on un-review, collapse on review).
+  const [override, setOverride] = useState<boolean | null>(null);
+  const [lastReviewed, setLastReviewed] = useState(reviewed);
+  if (lastReviewed !== reviewed) {
+    setLastReviewed(reviewed);
+    setOverride(null);
+  }
+  const open = override ?? !reviewed;
+  const setOpen = (v: boolean) => setOverride(v);
 
   return (
     <div

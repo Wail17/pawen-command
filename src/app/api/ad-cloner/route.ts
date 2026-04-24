@@ -139,7 +139,9 @@ async function handleScrapeMetaAPI(body: Record<string, unknown>, metaToken: str
     params.set('search_terms', searchTerms);
   }
 
-  const response = await fetch(`${META_GRAPH_URL}?${params}`);
+  const response = await fetch(`${META_GRAPH_URL}?${params}`, {
+    signal: AbortSignal.timeout(15_000),
+  });
 
   if (!response.ok) {
     const err = await response.json();
@@ -153,8 +155,10 @@ async function handleScrapeMetaAPI(body: Record<string, unknown>, metaToken: str
   const maxItems = Math.min(Number(limit) || 50, 100);
   let nextUrl = data.paging?.next;
 
-  while (nextUrl && allItems.length < maxItems) {
-    const nextRes = await fetch(nextUrl);
+  let pageCount = 0;
+  while (nextUrl && allItems.length < maxItems && pageCount < 10) {
+    pageCount++;
+    const nextRes = await fetch(nextUrl, { signal: AbortSignal.timeout(15_000) });
     if (!nextRes.ok) break;
     const nextData = await nextRes.json();
     allItems = [...allItems, ...(nextData.data || [])];
@@ -225,6 +229,7 @@ async function extractImageFromSnapshot(snapshotUrl: string): Promise<string | n
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
       redirect: 'follow',
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return null;
     const html = await res.text();
@@ -287,6 +292,7 @@ async function handleScrapeApify(body: Record<string, unknown>, apifyToken: stri
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(285_000),
   });
 
   if (!response.ok) {
@@ -389,6 +395,7 @@ async function handleScrapeFallback(body: Record<string, unknown>) {
         waitFor: 5000, // Wait 5s for JS to render
         timeout: 30000,
       }),
+      signal: AbortSignal.timeout(45_000),
     });
 
     if (res.ok) {
@@ -414,6 +421,7 @@ async function handleScrapeFallback(body: Record<string, unknown>) {
           formats: ['markdown'],
           onlyMainContent: true,
         }),
+        signal: AbortSignal.timeout(45_000),
       });
 
       if (searchRes.ok) {
@@ -441,6 +449,7 @@ async function handleScrapeFallback(body: Record<string, unknown>) {
           onlyMainContent: false,
           waitFor: 3000,
         }),
+        signal: AbortSignal.timeout(40_000),
       });
 
       if (fbPageRes.ok) {
@@ -502,6 +511,7 @@ ${markdown.slice(0, 60000)}`,
       method: 'POST',
       headers: parseHeaders,
       body: JSON.stringify(parseRequestBody),
+      signal: AbortSignal.timeout(180_000),
     });
 
     if (!parseResponse.ok) {
@@ -713,6 +723,7 @@ CRITICAL INSTRUCTIONS:
     method: 'POST',
     headers: translateHeaders,
     body: JSON.stringify(translateRequestBody),
+    signal: AbortSignal.timeout(180_000),
   });
 
   if (!response.ok) {
@@ -819,6 +830,7 @@ async function handleGenerate(body: Record<string, unknown>) {
           Authorization: `Key ${falKey}`,
         },
         body: JSON.stringify(reqBody),
+        signal: AbortSignal.timeout(120_000),
       });
 
       const responseText = await response.text();

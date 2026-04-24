@@ -13,6 +13,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem } from './common';
+import { apiUrl } from '../util/apiBaseUrl';
 
 export interface AmazonFetchOptions {
   maxProducts?: number;     // default 8
@@ -45,7 +46,7 @@ async function searchProducts(
   maxProducts: number,
 ): Promise<AmazonProduct[]> {
   try {
-    const res = await fetch('/api/amazon-reviews', {
+    const res = await fetch(apiUrl('/api/amazon-reviews'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'search', query, marketplace, maxProducts }),
@@ -63,7 +64,7 @@ async function fetchReviews(
   maxReviews: number,
 ): Promise<AmazonReview[]> {
   try {
-    const res = await fetch('/api/amazon-reviews', {
+    const res = await fetch(apiUrl('/api/amazon-reviews'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'reviews', productUrls, maxReviews }),

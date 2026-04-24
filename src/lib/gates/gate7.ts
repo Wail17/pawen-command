@@ -128,7 +128,7 @@ const gate7: GateConfigDef = {
       name: 'Angle Identifier & Scorer (EVOLVE Framework)',
       model: 'sonnet',
       temperature: 0.7,
-      maxTokens: 8192,
+      maxTokens: 16000,
 
       systemPrompt: (project, previousOutputs) => {
         const ctx = buildCreativeContext(project, previousOutputs);
@@ -261,7 +261,7 @@ RULES:
       name: 'Visual Inspiration Extractor (ZAK Pain & Hope Scenes)',
       model: 'sonnet',
       temperature: 0.7,
-      maxTokens: 6144,
+      maxTokens: 12000,
 
       systemPrompt: (project, previousOutputs) => {
         const ctx = buildCreativeContext(project, previousOutputs);
@@ -780,7 +780,7 @@ CHECKS:
   userMessage: (project, previousOutputs, subAgentOutputs) => {
     if (!subAgentOutputs || Object.keys(subAgentOutputs).length === 0) {
       const ctx = buildCreativeContext(project, previousOutputs);
-      return `Produce static ad briefs.\n\n${serializeCreativeContext(ctx)}`;
+      return `Produce static ad briefs.\n\n${serializeCreativeContext(ctx, project.selectedCopyFormat)}`;
     }
 
     return `Here are your 5 specialists' outputs from the dual-track pipeline.

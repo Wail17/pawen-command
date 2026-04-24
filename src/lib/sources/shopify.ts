@@ -12,6 +12,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { toRawItem, webSearch, scrapeUrl } from './common';
+import { apiUrl } from '../util/apiBaseUrl';
 
 export interface ShopifyFetchOptions {
   maxProducts?: number;      // default 20
@@ -85,7 +86,7 @@ export async function fetchShopify(
 
       if (parsed.handle) {
         // Single product URL → fetch product + reviews
-        const res = await fetch('/api/shopify', {
+        const res = await fetch(apiUrl('/api/shopify'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: 'product', url: storeUrl }),
@@ -132,7 +133,7 @@ export async function fetchShopify(
         }
       } else {
         // Store domain → fetch catalog
-        const res = await fetch('/api/shopify', {
+        const res = await fetch(apiUrl('/api/shopify'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: 'catalog', domain: parsed.domain }),
@@ -157,7 +158,7 @@ export async function fetchShopify(
           // Fetch reviews for top 3 products
           for (const product of data.products.slice(0, 3)) {
             try {
-              const rRes = await fetch('/api/shopify', {
+              const rRes = await fetch(apiUrl('/api/shopify'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

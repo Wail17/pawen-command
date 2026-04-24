@@ -235,10 +235,18 @@ Hooks: ${subAvatar.angles.hooks.join(' | ')}
 Story: ${subAvatar.angles.story_angle.problem} → ${subAvatar.angles.story_angle.agitation}`
     : '';
 
+  // Cap the prior-dives context. Each dive adds ~1-2k tokens of input
+  // and Opus latency scales with input — by dive 4-5 we'd push past the
+  // 300s function cap. Keep only the 2 most recent dives + a count.
+  const recentPriorDives = priorDives.slice(-2);
+  const olderDivesNote =
+    priorDives.length > recentPriorDives.length
+      ? `\n(plus ${priorDives.length - recentPriorDives.length} earlier dives summarised away — go into uncharted territory)`
+      : '';
   const priorBlock =
     priorDives.length === 0
       ? '(none — this is the first deep-dive. Go WIDE across all 7 dimensions.)'
-      : priorDives
+      : recentPriorDives
           .map(
             (d, i) => `--- Prior dive #${i + 1} (focus: ${d.focus}) ---
 Hidden fears: ${d.hidden_fears.join('; ')}
@@ -274,7 +282,7 @@ ${anglesBlock}${awarenessBlock}
 ${verbatims}
 
 === PRIOR DEEP-DIVES (territory already covered — go ELSEWHERE) ===
-${priorBlock}
+${priorBlock}${olderDivesNote}
 
 === FOCUS FOR THIS DIVE ===
 ${focus ? `PRIORITY FOCUS: "${focus}" — excavate this dimension with obsessive depth. Every other dimension should still be covered but this one gets 3x the detail.` : '(no specific focus — analyze the verbatims and attack the dimension where the most UNEXPLORED signal lives)'}

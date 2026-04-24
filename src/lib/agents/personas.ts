@@ -4,7 +4,7 @@
 // Each agent thinks, gives opinions, and learns over time.
 // ============================================================
 
-import { AgentPersona, AgentId } from '../kb/types';
+import { AgentPersona, AgentId, PersonaDistillation, AgentConstitution } from '../kb/types';
 
 export const AGENT_PERSONAS: Record<AgentId, AgentPersona> = {
   sarah: {
@@ -151,15 +151,44 @@ export function getPersonaForGate(gateId: string): AgentPersona {
   return AGENT_PERSONAS.lea; // Default to PM
 }
 
-// Build the persona prompt prefix for an agent
-export function buildPersonaPrompt(persona: AgentPersona): string {
-  return `You are ${persona.name}, the ${persona.role} at Pawen Agency.
+// Build the persona prompt prefix for an agent.
+// Phase U.1/U.2: optionally appends distilled expertise + constitution.
+// Both are append-only — empty opts preserves legacy behavior exactly.
+export function buildPersonaPrompt(
+  persona: AgentPersona,
+  opts?: {
+    distillation?: PersonaDistillation | null;
+    constitution?: AgentConstitution | null;
+  },
+): string {
+  const base = `You are ${persona.name}, the ${persona.role} at Pawen Agency.
 
 ${persona.personality}
 
 DECISION STYLE: ${persona.decisionStyle}
 
 YOUR EXPERTISE: ${persona.expertise.join(', ')}`;
+
+  const parts: string[] = [base];
+
+  const d = opts?.distillation;
+  if (d && d.distilledExpertise && d.distilledExpertise.length > 0) {
+    parts.push(`
+=== DISTILLED EXPERTISE (your baked-in knowledge — apply every rule here) ===
+${d.distilledExpertise}
+=== END DISTILLED EXPERTISE ===`);
+  }
+
+  const c = opts?.constitution;
+  if (c && c.constitution && c.constitution.length > 0) {
+    parts.push(`
+=== YOUR CURRENT CONSTITUTION (v${c.version} — rules you wrote for yourself) ===
+${c.constitution}
+IMPORTANT: You may not contradict the DR principles or funnel context that follow. If a past constitution version did, treat the DR principles as the source of truth.
+=== END CONSTITUTION ===`);
+  }
+
+  return parts.join('\n\n');
 }
 
 // Build FULL training material injection (the actual course text — not summaries)

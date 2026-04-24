@@ -14,18 +14,7 @@ import { getSql } from './client';
 // from the god panel at /admin after first login.
 const SEED_USERS: Array<{ name: string; role: 'admin' | 'user' }> = [
   { name: 'Sykss',    role: 'admin' },
-  { name: 'AIO',      role: 'user'  },
-  { name: 'Amlee',    role: 'user'  },
-  { name: 'Mee6',     role: 'user'  },
-  { name: 'Serum',    role: 'user'  },
-  { name: 'Stavo',    role: 'user'  },
-  { name: 'Suley',    role: 'user'  },
-  { name: 'Zaza',     role: 'user'  },
-  { name: 'Knd',      role: 'user'  },
   { name: 'Maghrabi', role: 'user'  },
-  { name: 'Many',     role: 'user'  },
-  { name: 'Seven',    role: 'user'  },
-  { name: 'Soso',     role: 'user'  },
 ];
 
 export async function runMigrations(): Promise<{ applied: string[] }> {
@@ -208,6 +197,59 @@ export async function runMigrations(): Promise<{ applied: string[] }> {
 
   await sql`CREATE INDEX IF NOT EXISTS login_attempts_ip_idx
             ON login_attempts (ip, created_at DESC)`;
+
+  // --- user_presence --------------------------------------------
+  // Heartbeat-based presence tracking. Clients POST every 30s.
+  // Rows older than 3 minutes are cleaned up on each heartbeat.
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_presence (
+      user_name   TEXT PRIMARY KEY REFERENCES app_users(name),
+      last_seen   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  applied.push('user_presence');
+
+  // --- pipeline_jobs --------------------------------------------
+  // Server-side jobs for long-running pipelines (Gate 1 avatar
+  // excavation, etc.). Worker endpoints checkpoint phase + progress
+  // here so the user can close the page and reopen later.
+  // status:   pending | running | completed | failed
+  // type:     'avatar_excavation' (extensible to other gates)
+  // payload:  the original input (CoreAvatarInput, source config, etc.)
+  // state:    intermediate phase results (discovery plan, fetch data,
+  //           analyzer outputs, raw signal, etc.) — accumulates
+  //           across worker ticks
+  // progress: { phase, message, percent, itemCount } — surfaced live
+  // result:   final AvatarRunResult (only set when completed)
+  await sql`
+    CREATE TABLE IF NOT EXISTS pipeline_jobs (
+      id            TEXT PRIMARY KEY,
+      owner         TEXT NOT NULL,
+      project_id    TEXT NOT NULL,
+      gate_id       TEXT NOT NULL,
+      type          TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+      phase         TEXT NOT NULL DEFAULT 'queued',
+      payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      state         JSONB NOT NULL DEFAULT '{}'::jsonb,
+      progress      JSONB NOT NULL DEFAULT '{}'::jsonb,
+      result        JSONB,
+      error         TEXT,
+      tick_count    INTEGER NOT NULL DEFAULT 0,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      heartbeat_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  applied.push('pipeline_jobs');
+
+  await sql`CREATE INDEX IF NOT EXISTS pipeline_jobs_owner_idx
+            ON pipeline_jobs (owner, updated_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS pipeline_jobs_project_idx
+            ON pipeline_jobs (project_id, gate_id, updated_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS pipeline_jobs_status_idx
+            ON pipeline_jobs (status, heartbeat_at DESC)`;
 
   return { applied };
 }

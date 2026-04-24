@@ -3,8 +3,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Project, GateId, AdPerformance } from '@/lib/types';
-import { getProject, saveProject } from '@/lib/store/db';
+import { getProject, saveProject, restoreProject, restoreGateOutput } from '@/lib/store/db';
+import { fetchBootstrap } from '@/lib/store/serverMirror';
 import Pipeline from '@/components/ui/Pipeline';
+import ProjectCostSummary from '@/components/ProjectCostSummary';
+import { FUNNEL_LABELS } from '@/lib/types';
 import { GATE_LABELS, ALL_GATES, canAccessGate } from '@/lib/store/project-utils';
 import Link from 'next/link';
 import { canStartAutoPipeline, runAutoPipeline, AutoPipelineState } from '@/lib/pipeline/autoPipeline';
@@ -115,7 +118,23 @@ export default function ProjectPage() {
       try {
         const id = params.id as string;
         if (!id) { router.push('/'); return; }
-        const p = await getProject(id);
+        let p = await getProject(id);
+        // Deep-link hydration: if local is missing or the project has no gate outputs,
+        // pull from server mirror so the user sees real state instead of an empty shell.
+        const needsHydration = !p || !p.avatarRunResult || Object.keys(p.gateStatuses ?? {}).length === 0;
+        if (needsHydration) {
+          const boot = await fetchBootstrap();
+          if (boot) {
+            const serverProject = boot.projects.find((sp) => sp && typeof sp === 'object' && (sp as { id?: string }).id === id);
+            if (serverProject) await restoreProject(serverProject as Project);
+            for (const g of boot.gateOutputs) {
+              if (g && typeof g === 'object' && (g as { projectId?: string }).projectId === id) {
+                await restoreGateOutput(g);
+              }
+            }
+            p = await getProject(id);
+          }
+        }
         if (!p) { router.push('/'); return; }
         setProject(p);
       } catch (err) {
@@ -243,7 +262,7 @@ export default function ProjectPage() {
       <div className="min-h-screen bg-bg-primary flex items-center justify-center">
         <div className="text-center">
           <p className="text-error mb-4">{error || 'Project not found'}</p>
-          <a href="/" className="text-accent-orange hover:underline">Back to dashboard</a>
+          <Link href="/" className="text-accent-orange hover:underline">Back to dashboard</Link>
         </div>
       </div>
     );
@@ -273,6 +292,13 @@ export default function ProjectPage() {
               </a>
             )}
           </div>
+        </div>
+
+        <div className="mb-6">
+          <ProjectCostSummary
+            projectId={project.id}
+            funnelLabel={project.selectedFunnel ? FUNNEL_LABELS[project.selectedFunnel] : undefined}
+          />
         </div>
 
         {/* Action bar: Start Anywhere + Auto-Pipeline + Export */}
@@ -358,6 +384,11 @@ export default function ProjectPage() {
             Competitor Ads
           </button>
         </div>
+
+        {/* Matrix Mode batch progress — one row per sub-avatar */}
+        {project.batchRunStatus && Object.keys(project.batchRunStatus).length > 0 && (
+          <MatrixProgressPanel project={project} />
+        )}
 
         {/* Auto-Pipeline progress */}
         {pipelineState && (
@@ -547,11 +578,15 @@ export default function ProjectPage() {
           <h2 className="text-lg font-bold text-text-primary mb-4">Tools & Modules</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
             {[
+              { href: `/project/${project.id}/import-context`, icon: '⚡', name: 'Import & skip to copy', desc: 'Already have your avatar/VOC/brand? Paste & jump straight to Gate 4' },
               { href: `/project/${project.id}/emails`, icon: '📧', name: 'Email Sequences', desc: '7 sequences, 28+ emails with A/B/C subjects' },
               { href: `/project/${project.id}/offer-stack`, icon: '💰', name: 'Offer Stack Builder', desc: 'Bonuses, guarantee, urgency, price anchoring' },
               { href: `/project/${project.id}/ugc-briefs`, icon: '🎬', name: 'UGC Creator Briefs', desc: 'Talking Head, GRWM, Unboxing formats' },
+              { href: `/project/${project.id}/video-ads`, icon: '🎥', name: 'Animated Video Ads', desc: 'AI animated objects — script + images + Kling/Veo clips' },
               { href: `/project/${project.id}/carousels`, icon: '🎠', name: 'Carousel Ads', desc: '5 carousel types with narrative slides' },
+              { href: `/project/${project.id}/ad-performance`, icon: '📈', name: 'Ad Performance', desc: 'CSV upload, graphs, alerts, TOF/MOF/BOF analysis' },
               { href: `/project/${project.id}/calculator`, icon: '🧮', name: 'ROAS Calculator', desc: 'COGS, break-even, CPA, scaling scenarios' },
+              { href: `/project/${project.id}/brandsearch`, icon: '🔍', name: 'BrandSearch Intel', desc: 'Competitor brands, ads, products & spend data' },
               { href: `/project/${project.id}/competitor-intel`, icon: '🕵️', name: 'Competitor Intel', desc: 'Ad cloner + reverse engineering' },
               { href: `/project/${project.id}/templates`, icon: '📐', name: 'Landing Pages', desc: 'Live template editor with Liquid' },
               { href: `/project/${project.id}/theme-editor`, icon: '🎨', name: 'Theme Editor', desc: 'Custom visual themes' },
@@ -603,6 +638,105 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`text-xs px-2 py-0.5 rounded-md ${styles[status] || ''}`}>
       {labels[status] || status}
     </span>
+  );
+}
+
+// Matrix Mode progress panel — one row per sub-avatar.
+// Uses `plannedGates` from each status so a narrowed range (e.g. gate2→gate5)
+// renders exactly that many pills, not 8.
+const DEFAULT_BATCH_GATES: GateId[] = ['gate2', 'gate3', 'gate4', 'gate5', 'gate6', 'gate7', 'gate8', 'gate9'];
+
+function MatrixProgressPanel({ project }: { project: Project }) {
+  const statuses = Object.values(project.batchRunStatus ?? {});
+  if (statuses.length === 0) return null;
+  const anyRunning = statuses.some(s => s.status === 'running' || s.status === 'queued');
+  const totalDone = statuses.filter(s => s.status === 'completed').length;
+  const range = statuses[0]?.plannedGates?.length
+    ? `${statuses[0].plannedGates[0]}→${statuses[0].plannedGates[statuses[0].plannedGates.length - 1]}`
+    : 'gate2→gate9';
+
+  return (
+    <div className={`mb-6 p-4 rounded-xl border ${anyRunning ? 'border-accent-orange bg-accent-orange/5' : 'border-success/40 bg-success/5'}`}>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div className="text-sm font-bold text-text-primary">
+            Matrix Mode — {anyRunning ? 'Running' : 'Complete'}
+          </div>
+          <div className="text-xs text-text-muted">
+            {totalDone}/{statuses.length} sub-avatars finished. Range: {range}.
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {statuses.map(st => {
+          const pillGates = st.plannedGates?.length ? st.plannedGates : DEFAULT_BATCH_GATES;
+          const done = new Set(st.completedGates);
+          const pct = Math.round((st.completedGates.length / pillGates.length) * 100);
+          const rowColor =
+            st.status === 'completed' ? 'border-success/40' :
+            st.status === 'failed' ? 'border-red-500/40' :
+            st.status === 'running' ? 'border-accent-orange/50' :
+            'border-border';
+          return (
+            <div key={st.subAvatarId} className={`p-3 rounded-lg border bg-bg-card ${rowColor}`}>
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Link
+                    href={`/project/${project.id}/gate/${pillGates[0]}?sa=${encodeURIComponent(st.subAvatarId)}`}
+                    className="text-sm font-semibold text-text-primary hover:text-accent-orange truncate"
+                  >
+                    {st.subAvatarNickname}
+                  </Link>
+                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-border text-text-muted font-semibold">
+                    {FUNNEL_LABELS[st.funnel]}
+                  </span>
+                  {st.sophisticationStage && (
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-border text-text-muted font-semibold">
+                      Soph {st.sophisticationStage}/5
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`font-bold ${
+                    st.status === 'completed' ? 'text-success' :
+                    st.status === 'failed' ? 'text-red-400' :
+                    st.status === 'running' ? 'text-accent-orange' :
+                    'text-text-muted'
+                  }`}>
+                    {st.status === 'running' && st.currentGate ? `▶ ${st.currentGate}` : st.status.toUpperCase()}
+                  </span>
+                  <span className="text-text-muted">{st.completedGates.length}/{pillGates.length} · {pct}%</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {pillGates.map(g => {
+                  const isDone = done.has(g);
+                  const isCurrent = st.currentGate === g;
+                  const isFailed = st.status === 'failed' && st.stoppedAt === g;
+                  return (
+                    <div
+                      key={g}
+                      title={`${g}: ${isDone ? 'done' : isCurrent ? 'running' : isFailed ? 'failed' : 'queued'}`}
+                      className={`flex-1 h-2 rounded-full transition ${
+                        isFailed ? 'bg-red-500'
+                        : isDone ? 'bg-success'
+                        : isCurrent ? 'bg-accent-orange animate-pulse'
+                        : 'bg-border'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              {st.reason && st.status === 'failed' && (
+                <div className="mt-2 text-[11px] text-red-300">
+                  {st.reason}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

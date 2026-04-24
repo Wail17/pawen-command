@@ -10,11 +10,12 @@
 // + full result visualization (sub-avatars, comparative table, recommendation)
 // ============================================================
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project, GateOutput, ShopifyProductData, ShopifyVariant, ShopifyImage, ShopifyReviewData } from '@/lib/types';
+import { Project, GateOutput, ShopifyProductData, ShopifyVariant, ShopifyImage, ShopifyReviewData, BatchSubAvatarRunStatus, GateId } from '@/lib/types';
 import { saveProject, saveGateOutput } from '@/lib/store/db';
 import { unlockNextGate } from '@/lib/store/project-utils';
+import { runBatchPipeline, canStartBatchPipeline, BATCH_GATES } from '@/lib/pipeline/batchPipeline';
 import {
   CoreAvatarInput,
   SourceConfig,
@@ -32,13 +33,16 @@ import {
 } from '@/lib/avatars/types';
 import {
   generateAwarenessVariant,
-  generateDeepDive,
+  generateAwarenessClassification,
   appendAwarenessVariant,
   appendDeepDive,
+  applyAwarenessClassification,
   AWARENESS_LABEL,
   AWARENESS_DESCRIPTION,
 } from '@/lib/avatars/enrich';
-import { runAvatarExcavation } from '@/lib/avatars/runAvatarExcavation';
+import { useAvatarJob } from '@/lib/jobs/useAvatarJob';
+import { useDeepDiveJob } from '@/lib/jobs/useDeepDiveJob';
+import { notifyGateStart, notifyGateEnd, notifyGateError, extractPreview } from '@/lib/notifications/discord';
 import { convertReverseEngineeredToAvatarRunResult } from '@/lib/avatars/fromReverseEngineered';
 import { enrichReverseEngineeredRun } from '@/lib/avatars/reverseEnrichment';
 import {
@@ -48,6 +52,7 @@ import {
 import { REDDIT_DEPTH_PRESETS, RedditDepth } from '@/lib/sources/reddit';
 import RawSignalView from './RawSignalView';
 import SourcesView from './SourcesView';
+import { BoosterPanel } from './BoosterPanel';
 import { TranslateCtx, InlineTranslate } from '@/components/ui/TranslateToggle';
 
 interface Gate1AvatarExcavationProps {
@@ -107,7 +112,143 @@ export default function Gate1AvatarExcavation({
   const [shopifyImporting, setShopifyImporting] = useState(false);
   const [shopifyStatus, setShopifyStatus] = useState<string | null>(null);
 
+  // === MATRIX MODE (batch runner) ===
+  // batchSelection = SAs the user wants to run the full funnel on, in parallel.
+  // Defaults to every SA with recommended_for_test=true; user can adjust.
+  const [batchSelection, setBatchSelection] = useState<Set<string>>(
+    () => new Set(project.batchSubAvatarIds ?? []),
+  );
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchStatuses, setBatchStatuses] = useState<Record<string, BatchSubAvatarRunStatus>>(
+    () => project.batchRunStatus ?? {},
+  );
+  const [batchError, setBatchError] = useState<string | null>(null);
+  // Gate range — default full 2→9. User can narrow to e.g. gate2→gate5.
+  const [batchStartGate, setBatchStartGate] = useState<GateId>('gate2');
+  const [batchEndGate, setBatchEndGate] = useState<GateId>('gate9');
+
   const isApproved = project.gateStatuses.gate1 === 'approved';
+
+  // Background-job context: filled at the moment we kick off a run, read by
+  // the job hook callbacks at completion. Lives in a ref so callbacks see
+  // the freshest values without having to be re-registered on every render.
+  const pendingJobCtxRef = useRef<{
+    seededCore: CoreAvatarInput;
+    inputSummary: string;
+    modelLabel: string;
+    startedAt: number;
+  } | null>(null);
+
+  const handleJobComplete = useCallback(
+    async (
+      runResultData: AvatarRunResult,
+      totalTokens?: { input: number; output: number },
+    ) => {
+      const ctx = pendingJobCtxRef.current;
+      setResult(runResultData);
+      setIsRunning(false);
+
+      notifyGateEnd({
+        gateId: 'gate1',
+        projectId: project.id,
+        projectName: project.name,
+        durationMs: ctx ? Date.now() - ctx.startedAt : 0,
+        preview: extractPreview('gate1', runResultData as unknown as Record<string, unknown>),
+        status: 'pending_decisions',
+      });
+
+      const updatedProject: Project = {
+        ...project,
+        coreAvatarInput: ctx?.seededCore ?? project.coreAvatarInput ?? core,
+        avatarSourceConfig: sourceConfig,
+        avatarRunResult: runResultData,
+        selectedSubAvatarId: runResultData.sub_avatars[0]?.id ?? project.selectedSubAvatarId,
+        gateStatuses: { ...project.gateStatuses, gate1: 'pending_review' },
+        localizationCheckpoint: null,
+        activeAvatarJobId: null,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveProject(updatedProject);
+      onProjectChange(updatedProject);
+
+      const now = new Date().toISOString();
+      const gateOutput: GateOutput = {
+        gateId: 'gate1',
+        projectId: project.id,
+        status: 'pending_decisions',
+        data: runResultData as unknown as Record<string, unknown>,
+        generationLog: [
+          {
+            timestamp: now,
+            agent: 'lead',
+            model: ctx?.modelLabel ?? 'avatar-excavation-pipeline',
+            iteration: 1,
+            input_summary: ctx?.inputSummary ?? 'Resumed background job',
+            output_summary: `${runResultData.sub_avatars.length} sub-avatars, ${runResultData.metadata.total_verbatims} verbatims, ${runResultData.metadata.total_items_scraped} items scraped`,
+            tokens_used: totalTokens,
+          },
+        ],
+        reviewResult: null,
+        congruenceResult: null,
+        humanDecisions: {},
+        checkpoint: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await saveGateOutput(gateOutput);
+      pendingJobCtxRef.current = null;
+    },
+    [project, onProjectChange, sourceConfig, core],
+  );
+
+  const handleJobError = useCallback(
+    async (msg: string) => {
+      const ctx = pendingJobCtxRef.current;
+      setError(msg);
+      setIsRunning(false);
+      notifyGateError({
+        gateId: 'gate1',
+        projectId: project.id,
+        projectName: project.name,
+        durationMs: ctx ? Date.now() - ctx.startedAt : 0,
+        error: msg,
+      });
+      if (project.activeAvatarJobId) {
+        const cleared: Project = {
+          ...project,
+          activeAvatarJobId: null,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveProject(cleared);
+        onProjectChange(cleared);
+      }
+      pendingJobCtxRef.current = null;
+    },
+    [project, onProjectChange],
+  );
+
+  const job = useAvatarJob({
+    onProgress: (event) => setProgressEvents((prev) => [...prev, event]),
+    onComplete: handleJobComplete,
+    onError: handleJobError,
+  });
+
+  // Auto-resume: if the project carries an in-flight job id (the user closed
+  // the tab mid-run and came back), re-attach the polling loop on mount so
+  // the progress bar picks up where it left off.
+  const resumedJobRef = useRef(false);
+  useEffect(() => {
+    if (resumedJobRef.current) return;
+    if (!project.activeAvatarJobId) return;
+    if (result || project.avatarRunResult) return;
+    resumedJobRef.current = true;
+    setIsRunning(true);
+    setError(null);
+    setProgressEvents([
+      { phase: 'idle', message: 'Re-attaching to background excavation…' },
+    ]);
+    job.resume(project.activeAvatarJobId);
+  }, [project.activeAvatarJobId, project.avatarRunResult, result, job]);
 
   // Auto-select the recommended sub-avatar as soon as a result is available
   // and no explicit selection has been made yet.
@@ -119,6 +260,26 @@ export default function Gate1AvatarExcavation({
       if (defaultPick) setSelectedSubAvatarId(defaultPick);
     }
   }, [result, selectedSubAvatarId]);
+
+  // Seed the batch-selection ONCE when a result first shows up (unless the
+  // project already has a persisted batch). Default = all recommended_for_test,
+  // fallback to the single selected SA if none are recommended.
+  const batchSeededRef = useRef(false);
+  useEffect(() => {
+    if (!result || batchSeededRef.current) return;
+    if (batchSelection.size > 0) {
+      batchSeededRef.current = true;
+      return;
+    }
+    const recommended = result.sub_avatars.filter(sa => sa.recommended_for_test).map(sa => sa.id);
+    const seed = recommended.length > 0
+      ? new Set(recommended)
+      : selectedSubAvatarId
+      ? new Set([selectedSubAvatarId])
+      : new Set(result.sub_avatars.slice(0, 1).map(sa => sa.id));
+    setBatchSelection(seed);
+    batchSeededRef.current = true;
+  }, [result, selectedSubAvatarId, batchSelection.size]);
 
   const handleSelectSubAvatar = useCallback(
     async (id: string) => {
@@ -134,6 +295,83 @@ export default function Gate1AvatarExcavation({
     },
     [project, onProjectChange],
   );
+
+  const toggleBatch = useCallback((id: string) => {
+    setBatchSelection(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const batchSelectAll = useCallback(() => {
+    if (!result) return;
+    setBatchSelection(new Set(result.sub_avatars.map(sa => sa.id)));
+  }, [result]);
+
+  const batchSelectRecommended = useCallback(() => {
+    if (!result) return;
+    const ids = result.sub_avatars.filter(sa => sa.recommended_for_test).map(sa => sa.id);
+    setBatchSelection(new Set(ids));
+  }, [result]);
+
+  const batchSelectNone = useCallback(() => {
+    setBatchSelection(new Set());
+  }, []);
+
+  const handleLaunchBatch = useCallback(async () => {
+    if (!result || batchRunning) return;
+    const ids = Array.from(batchSelection);
+
+    // Compute the gate range from the two dropdowns.
+    const startIdx = BATCH_GATES.indexOf(batchStartGate);
+    const endIdx = BATCH_GATES.indexOf(batchEndGate);
+    if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) {
+      setBatchError('Invalid gate range — start must be before or equal to end.');
+      return;
+    }
+    const gateRange: GateId[] = BATCH_GATES.slice(startIdx, endIdx + 1);
+
+    const check = canStartBatchPipeline(
+      { ...project, gateStatuses: { ...project.gateStatuses, gate1: 'approved' } },
+      ids,
+    );
+    if (!check.ok) {
+      setBatchError(check.reason ?? 'Cannot start batch');
+      return;
+    }
+    setBatchError(null);
+    setBatchRunning(true);
+    // Wipe local status state BEFORE the run starts so prior-run failure
+    // reasons don't linger on cards until the first status update fires.
+    setBatchStatuses({});
+
+    // Gate 1 gets approved at launch: Matrix Mode IS the approval flow.
+    const launchProject = unlockNextGate(
+      {
+        ...project,
+        selectedSubAvatarId: selectedSubAvatarId ?? ids[0],
+        batchSubAvatarIds: ids,
+        batchRunStatus: {},
+        gateStatuses: { ...project.gateStatuses, gate1: 'approved' },
+      },
+      'gate1',
+    );
+    await saveProject(launchProject);
+    onProjectChange(launchProject);
+
+    try {
+      await runBatchPipeline(launchProject, ids, {
+        onStatusChange: (map) => setBatchStatuses({ ...map }),
+        onProjectUpdate: (p) => onProjectChange(p),
+      }, gateRange);
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : 'Batch run failed');
+    } finally {
+      setBatchRunning(false);
+    }
+  }, [result, batchRunning, batchSelection, batchStartGate, batchEndGate, project, selectedSubAvatarId, onProjectChange]);
 
   // Replace ONE sub-avatar in the current run result, immutably, and persist.
   // Used by the awareness-filter chips and the "approfondis encore +" button
@@ -158,6 +396,29 @@ export default function Gate1AvatarExcavation({
       onProjectChange(updatedProject);
     },
     [result, project, onProjectChange],
+  );
+
+  // Persist `activeDeepDiveJobs[subAvatarId] = jobId | null` on the project so
+  // the deep-dive can resume after the user closes/refreshes the tab. This
+  // pairs with the auto-resume effect inside SubAvatarCard.
+  const handleSetActiveDeepDiveJob = useCallback(
+    async (subAvatarId: string, jobId: string | null) => {
+      const current = project.activeDeepDiveJobs ?? {};
+      const next: Record<string, string> = { ...current };
+      if (jobId) {
+        next[subAvatarId] = jobId;
+      } else {
+        delete next[subAvatarId];
+      }
+      const updatedProject: Project = {
+        ...project,
+        activeDeepDiveJobs: next,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveProject(updatedProject);
+      onProjectChange(updatedProject);
+    },
+    [project, onProjectChange],
   );
 
   // Persist golden-nugget picks from the Raw Signal view. Non-destructive —
@@ -459,6 +720,32 @@ export default function Gate1AvatarExcavation({
             { phase, message: p.message, progress: p.pct / 100 },
           ]);
         },
+        project.localizationCheckpoint ?? null,
+        async (cp) => {
+          // Persist after every phase so a crash can resume. Stored on the
+          // Project (IndexedDB + server mirror), not a separate store.
+          const updated: Project = {
+            ...project,
+            localizationCheckpoint: cp,
+            updatedAt: new Date().toISOString(),
+          };
+          await saveProject(updated);
+          onProjectChange(updated);
+        },
+        // Existing target-market VOC — treated as ground truth by the API.
+        // Pulled from the project's current avatarRunResult if one exists
+        // (user already ran excavation on the target market), otherwise null.
+        project.avatarRunResult
+          ? {
+              verbatims: project.avatarRunResult.sub_avatars
+                .flatMap(sa => (sa.verbatim_quotes || []).map(v => v.quote))
+                .filter(Boolean)
+                .slice(0, 120),
+              sub_avatar_names: project.avatarRunResult.sub_avatars.map(sa => sa.name),
+            }
+          : null,
+        sourceConfig,
+        redditDepth,
       );
 
       // Level 1: enrichment pass on the localized result. We keep the
@@ -490,6 +777,7 @@ export default function Gate1AvatarExcavation({
         avatarRunResult: converted,
         selectedSubAvatarId: converted.sub_avatars[0]?.id ?? null,
         gateStatuses: { ...project.gateStatuses, gate1: 'pending_review' },
+        localizationCheckpoint: null,
         updatedAt: new Date().toISOString(),
       };
       await saveProject(updatedProject);
@@ -527,6 +815,75 @@ export default function Gate1AvatarExcavation({
     }
   }, [reverseEngineeredRaw, core, project, onProjectChange]);
 
+  // Deep excavate seeded by the reverse-engineered funnel. This is the FULL
+  // multi-source pipeline (Reddit, Quora, forums, TikTok, YouTube, Shopify,
+  // searchWide) — Marcus uses the competitor pains/desires/mechanism to
+  // sharpen discovery, then the pipeline mines real verbatims from the
+  // target market. Produces genuine raw signal + golden nuggets +
+  // scored phrases + identity markers — not a translation of the source.
+  // Auto-fills the core input from reverse data when the user hasn't typed
+  // it yet, so one click is enough.
+  const handleDeepExcavateFromReverse = useCallback(async () => {
+    if (!reverseEngineeredRaw) return;
+    setError(null);
+    setIsRunning(true);
+    setProgressEvents([]);
+    setResult(null);
+
+    const seeded: CoreAvatarInput = {
+      ...core,
+      surface_desire:
+        core.surface_desire ||
+        (reverseEngineeredRaw.sub_avatar?.desires || [])[0] ||
+        reverseEngineeredRaw.sub_avatar?.description ||
+        '',
+      niche: core.niche || project.niche || '',
+      product: core.product || project.productDescription || project.name || '',
+      language: core.language || project.targetLanguage || 'en-US',
+      market: core.market || project.targetMarket || 'US',
+      notes:
+        core.notes ||
+        `Reverse-engineered from ${reverseEngineeredRaw.competitor_brand}. Mechanism: ${reverseEngineeredRaw.mechanism?.name || 'n/a'}.`,
+    };
+    setCore(seeded);
+
+    const __g1Start = Date.now();
+    notifyGateStart('gate1', project.id, project.name);
+
+    pendingJobCtxRef.current = {
+      seededCore: seeded,
+      inputSummary: `Reverse-seeded from ${reverseEngineeredRaw.competitor_brand} → full excavation in ${seeded.market} (${seeded.language})`,
+      modelLabel: 'avatar-excavation-reverse-seeded',
+      startedAt: __g1Start,
+    };
+
+    const jobId = await job.start({
+      projectId: project.id,
+      core: seeded,
+      config: sourceConfig,
+      redditDepth,
+      reverseSeeds: reverseEngineeredRaw,
+    });
+
+    if (!jobId) {
+      // start() already pushed the error through onError. Just unwind UI.
+      setIsRunning(false);
+      return;
+    }
+
+    // Persist the job id so a refresh / closed tab can reconnect.
+    const withJob: Project = {
+      ...project,
+      coreAvatarInput: seeded,
+      avatarSourceConfig: sourceConfig,
+      activeAvatarJobId: jobId,
+      gateStatuses: { ...project.gateStatuses, gate1: 'in_progress' },
+      updatedAt: new Date().toISOString(),
+    };
+    await saveProject(withJob);
+    onProjectChange(withJob);
+  }, [reverseEngineeredRaw, core, sourceConfig, redditDepth, project, onProjectChange, job]);
+
   const handleRun = useCallback(async () => {
     if (!canRun) return;
     setIsRunning(true);
@@ -534,72 +891,45 @@ export default function Gate1AvatarExcavation({
     setProgressEvents([]);
     setResult(null);
 
-    // Level 2: if a reverse-engineered funnel is sitting on the project,
-    // seed the discovery phase with it. Marcus uses it to sharpen the hunt,
-    // but the pipeline still mines real third-party voices in the target
-    // market — so we get evidence-backed sub-avatars instead of a synthetic
-    // shape transform.
-    const runResult = await runAvatarExcavation({
+    const __g1Start = Date.now();
+    notifyGateStart('gate1', project.id, project.name);
+
+    pendingJobCtxRef.current = {
+      seededCore: core,
+      inputSummary: `Core avatar: ${core.surface_desire} / ${core.niche} / ${core.market}`,
+      modelLabel: 'avatar-excavation-pipeline',
+      startedAt: __g1Start,
+    };
+
+    // Kick off the run as a server-side background job. The user can now
+    // close the tab — runAvatarJob keeps going via Next.js after() and
+    // checkpoints into pipeline_jobs. handleJobComplete (registered on the
+    // hook above) hydrates the result + GateOutput once polling sees
+    // status='completed'.
+    const jobId = await job.start({
+      projectId: project.id,
       core,
       config: sourceConfig,
       redditDepth,
       reverseSeeds: reverseEngineeredRaw ?? null,
-      onProgress: (event) => {
-        setProgressEvents(prev => [...prev, event]);
-      },
     });
 
-    if (runResult.error || !runResult.result) {
-      setError(runResult.error ?? 'Unknown error');
+    if (!jobId) {
       setIsRunning(false);
       return;
     }
 
-    setResult(runResult.result);
-
-    // Persist into project
-    const updatedProject: Project = {
+    const withJob: Project = {
       ...project,
       coreAvatarInput: core,
       avatarSourceConfig: sourceConfig,
-      avatarRunResult: runResult.result,
-      gateStatuses: { ...project.gateStatuses, gate1: 'pending_review' },
+      activeAvatarJobId: jobId,
+      gateStatuses: { ...project.gateStatuses, gate1: 'in_progress' },
       updatedAt: new Date().toISOString(),
     };
-    await saveProject(updatedProject);
-    onProjectChange(updatedProject);
-
-    // Also persist as a GateOutput so the rest of the pipeline (Brand DNA
-    // compile, getAllGateOutputs, downstream gates) finds Gate 1 the same
-    // way it finds every other gate. The full AvatarRunResult goes into data.
-    const now = new Date().toISOString();
-    const gateOutput: GateOutput = {
-      gateId: 'gate1',
-      projectId: project.id,
-      status: 'pending_decisions',
-      data: runResult.result as unknown as Record<string, unknown>,
-      generationLog: [
-        {
-          timestamp: now,
-          agent: 'lead',
-          model: 'avatar-excavation-pipeline',
-          iteration: 1,
-          input_summary: `Core avatar: ${core.surface_desire} / ${core.niche} / ${core.market}`,
-          output_summary: `${runResult.result.sub_avatars.length} sub-avatars, ${runResult.result.metadata.total_verbatims} verbatims, ${runResult.result.metadata.total_items_scraped} items scraped`,
-          tokens_used: runResult.totalTokens,
-        },
-      ],
-      reviewResult: null,
-      congruenceResult: null,
-      humanDecisions: {},
-      checkpoint: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await saveGateOutput(gateOutput);
-
-    setIsRunning(false);
-  }, [canRun, core, sourceConfig, redditDepth, reverseEngineeredRaw, project, onProjectChange]);
+    await saveProject(withJob);
+    onProjectChange(withJob);
+  }, [canRun, core, sourceConfig, redditDepth, reverseEngineeredRaw, project, onProjectChange, job]);
 
   return (
     <TranslateCtx.Provider value={project.targetLanguage ?? null}>
@@ -657,10 +987,23 @@ export default function Gate1AvatarExcavation({
                     className="px-4 py-2 bg-bg-primary border border-accent-orange/60 text-accent-orange text-sm font-semibold rounded-lg hover:bg-accent-orange/10 disabled:opacity-50"
                     title={`Refresh verbatims, emotional triggers and cultural anchors for ${project.targetMarket || 'your market'} — keeps the angle/mechanism intact.`}
                   >
-                    Localize to {project.targetMarket || 'my market'} ⚡
+                    {project.localizationCheckpoint && project.localizationCheckpoint.phase !== 'done'
+                      ? `Resume localize (${project.localizationCheckpoint.phase}) ⚡`
+                      : `Localize to ${project.targetMarket || 'my market'} ⚡`}
                   </button>
-                  <span className="text-[10px] text-text-muted">
-                    or run the full excavation below for deeper verbatims
+                  <button
+                    type="button"
+                    onClick={handleDeepExcavateFromReverse}
+                    disabled={isRunning}
+                    className="px-4 py-2 bg-accent-teal/10 border border-accent-teal/60 text-accent-teal text-sm font-semibold rounded-lg hover:bg-accent-teal/20 disabled:opacity-50"
+                    title="Run the full multi-source excavation (Reddit / Quora / forums / TikTok / YouTube / Shopify) seeded by this reverse-engineered funnel. Produces real raw signal, golden nuggets, scored phrases and identity markers mined from the target market."
+                  >
+                    Deep excavate (golden nuggets) 🔬
+                  </button>
+                  <span className="text-[10px] text-text-muted basis-full">
+                    {project.localizationCheckpoint && project.localizationCheckpoint.phase !== 'done'
+                      ? `Checkpoint saved — will resume from "${project.localizationCheckpoint.phase}" phase`
+                      : 'Deep excavate runs the full pipeline (raw signal + gap-fill + validation) seeded by the reverse avatar — 15-30 min, best signal'}
                   </span>
                 </div>
               </div>
@@ -863,7 +1206,24 @@ export default function Gate1AvatarExcavation({
               Re-run
             </button>
           )}
+          {isRunning && job.activeJobId && (
+            <button
+              onClick={async () => {
+                if (!confirm('Cancel this background excavation? Partial work will be lost.')) return;
+                await job.cancel();
+              }}
+              className="px-4 py-3 border border-error/50 text-error rounded-lg hover:bg-error/10"
+              title="Stop the server-side job"
+            >
+              Cancel
+            </button>
+          )}
         </div>
+        {isRunning && job.activeJobId && (
+          <p className="text-xs text-text-muted -mt-3">
+            Running server-side. You can close this tab — the excavation will continue and you'll see the result when you come back.
+          </p>
+        )}
 
         {/* PROGRESS */}
         {(isRunning || progressEvents.length > 0) && (
@@ -959,6 +1319,18 @@ export default function Gate1AvatarExcavation({
                 onUpdateSubAvatar={handleUpdateSubAvatar}
                 onRunFullExcavation={handleRun}
                 canRunFullExcavation={canRun && !isRunning}
+                projectId={project.id}
+                project={project}
+                onProjectChange={onProjectChange}
+                activeDeepDiveJobs={project.activeDeepDiveJobs}
+                onSetActiveDeepDiveJob={handleSetActiveDeepDiveJob}
+                batchSelection={batchSelection}
+                onToggleBatch={toggleBatch}
+                onBatchSelectAll={batchSelectAll}
+                onBatchSelectRecommended={batchSelectRecommended}
+                onBatchSelectNone={batchSelectNone}
+                batchRunning={batchRunning}
+                batchStatuses={batchStatuses}
               />
             )}
 
@@ -990,36 +1362,165 @@ export default function Gate1AvatarExcavation({
 
         {/* APPROVE & CONTINUE */}
         {result && !isRunning && (
-          <div className="flex flex-col gap-2 pt-2">
-            {selectedSubAvatarId && (
-              <div className="text-xs text-text-muted">
-                Deep dive will focus on{' '}
-                <span className="text-accent-teal font-semibold">
-                  {result.sub_avatars.find(sa => sa.id === selectedSubAvatarId)?.nickname ??
-                    selectedSubAvatarId}
-                </span>
-                . All Gates 2-9 will be built around this sub-avatar.
+          <div className="flex flex-col gap-4 pt-2">
+            {/* Matrix Mode launcher — multi-SA parallel pipeline */}
+            <div className="p-4 rounded-xl border-2 border-accent-orange/40 bg-gradient-to-br from-accent-orange/10 via-bg-card to-bg-card space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-xs uppercase tracking-wider font-black text-accent-orange">
+                    Matrix Mode — serial funnel runner
+                  </div>
+                  <div className="text-xs text-text-muted mt-0.5">
+                    Run the full Gate 2→9 funnel for every selected sub-avatar, one at a time
+                    (rate-limit safe). Each SA uses its own recommended awareness level + market
+                    sophistication.
+                  </div>
+                </div>
+                <div className="text-xs text-text-primary font-semibold shrink-0">
+                  {batchSelection.size} selected
+                </div>
               </div>
-            )}
-            {!selectedSubAvatarId && (
-              <div className="text-xs text-accent-orange">
-                Pick ONE sub-avatar below to focus the deep dive on before continuing.
-              </div>
-            )}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleApprove}
-                disabled={!selectedSubAvatarId}
-                className="px-6 py-3 bg-success text-white font-semibold rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isApproved ? 'Continue to Gate 2 →' : 'Approve & Continue to Gate 2 →'}
-              </button>
-              {isApproved && (
-                <span className="text-xs text-text-muted">
-                  Gate 1 already approved. Re-running will overwrite the saved result.
-                </span>
+
+              {!project.brandDNA?.locked && (
+                <div className="text-xs p-2 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200">
+                  ⚠ Brand DNA must be locked before launching the batch. Open Brand DNA from the sidebar.
+                </div>
               )}
+
+              {/* Gate range selector — lets user run a subset e.g. gate2→gate5. */}
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="text-text-muted uppercase tracking-wider font-semibold">
+                  Gate range:
+                </span>
+                <select
+                  value={batchStartGate}
+                  disabled={batchRunning}
+                  onChange={(e) => {
+                    const start = e.target.value as GateId;
+                    setBatchStartGate(start);
+                    // Snap end to start if user went past it.
+                    if (BATCH_GATES.indexOf(start) > BATCH_GATES.indexOf(batchEndGate)) {
+                      setBatchEndGate(start);
+                    }
+                  }}
+                  className="px-2 py-1 bg-bg-input border border-border rounded text-text-primary text-xs focus:outline-none focus:border-accent-orange disabled:opacity-40"
+                >
+                  {BATCH_GATES.map(g => (
+                    <option key={g} value={g}>{g.replace('gate', 'Gate ')}</option>
+                  ))}
+                </select>
+                <span className="text-text-muted">→</span>
+                <select
+                  value={batchEndGate}
+                  disabled={batchRunning}
+                  onChange={(e) => {
+                    const end = e.target.value as GateId;
+                    setBatchEndGate(end);
+                    if (BATCH_GATES.indexOf(end) < BATCH_GATES.indexOf(batchStartGate)) {
+                      setBatchStartGate(end);
+                    }
+                  }}
+                  className="px-2 py-1 bg-bg-input border border-border rounded text-text-primary text-xs focus:outline-none focus:border-accent-orange disabled:opacity-40"
+                >
+                  {BATCH_GATES.map(g => (
+                    <option key={g} value={g}>{g.replace('gate', 'Gate ')}</option>
+                  ))}
+                </select>
+                <span className="text-text-muted ml-1">
+                  ({BATCH_GATES.indexOf(batchEndGate) - BATCH_GATES.indexOf(batchStartGate) + 1} gates)
+                </span>
+                <div className="flex items-center gap-1 ml-auto">
+                  <button
+                    type="button"
+                    disabled={batchRunning}
+                    onClick={() => { setBatchStartGate('gate2'); setBatchEndGate('gate9'); }}
+                    className="px-2 py-1 rounded border border-border text-text-muted hover:text-text-primary hover:border-accent-orange disabled:opacity-40"
+                  >
+                    Full (2→9)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={batchRunning}
+                    onClick={() => { setBatchStartGate('gate2'); setBatchEndGate('gate5'); }}
+                    className="px-2 py-1 rounded border border-border text-text-muted hover:text-text-primary hover:border-accent-orange disabled:opacity-40"
+                  >
+                    Copy (2→5)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={batchRunning}
+                    onClick={() => { setBatchStartGate('gate6'); setBatchEndGate('gate9'); }}
+                    className="px-2 py-1 rounded border border-border text-text-muted hover:text-text-primary hover:border-accent-orange disabled:opacity-40"
+                  >
+                    Creative (6→9)
+                  </button>
+                </div>
+              </div>
+
+              {batchError && (
+                <div className="text-xs p-2 rounded border border-red-500/40 bg-red-500/10 text-red-300">
+                  {batchError}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={handleLaunchBatch}
+                  disabled={
+                    batchRunning ||
+                    batchSelection.size === 0 ||
+                    !project.brandDNA?.locked
+                  }
+                  className="px-6 py-3 bg-accent-orange text-black font-bold rounded-lg hover:bg-accent-orange/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {batchRunning
+                    ? `Running ${batchSelection.size} sub-avatars…`
+                    : `🚀 Launch Batch (${batchSelection.size} SAs × ${BATCH_GATES.indexOf(batchEndGate) - BATCH_GATES.indexOf(batchStartGate) + 1} gates)`}
+                </button>
+                <span className="text-[11px] text-text-muted">
+                  Runs one SA at a time (rate-limit safe). Each SA × each gate = one API run.
+                </span>
+              </div>
             </div>
+
+            {/* Single-SA fallback (legacy) — kept for when the user wants to
+                focus on ONE sub-avatar instead of running the matrix. */}
+            <details className="text-xs text-text-muted">
+              <summary className="cursor-pointer select-none hover:text-text-primary">
+                Or: continue with a single sub-avatar (legacy flow)
+              </summary>
+              <div className="mt-3 space-y-2">
+                {selectedSubAvatarId && (
+                  <div className="text-xs text-text-muted">
+                    Deep dive will focus on{' '}
+                    <span className="text-accent-teal font-semibold">
+                      {result.sub_avatars.find(sa => sa.id === selectedSubAvatarId)?.nickname ??
+                        selectedSubAvatarId}
+                    </span>
+                    . All Gates 2-9 will be built around this sub-avatar.
+                  </div>
+                )}
+                {!selectedSubAvatarId && (
+                  <div className="text-xs text-accent-orange">
+                    Pick ONE sub-avatar below to focus the deep dive on before continuing.
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleApprove}
+                    disabled={!selectedSubAvatarId}
+                    className="px-6 py-3 bg-success text-white font-semibold rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isApproved ? 'Continue to Gate 2 →' : 'Approve & Continue to Gate 2 →'}
+                  </button>
+                  {isApproved && (
+                    <span className="text-xs text-text-muted">
+                      Gate 1 already approved. Re-running will overwrite the saved result.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </details>
           </div>
         )}
       </div>
@@ -1064,6 +1565,18 @@ interface ResultViewProps {
   onUpdateSubAvatar: (updated: SubAvatarV2) => Promise<void>;
   onRunFullExcavation?: () => void;
   canRunFullExcavation?: boolean;
+  projectId: string;
+  project: Project;
+  onProjectChange: (project: Project) => void;
+  activeDeepDiveJobs?: Record<string, string>;
+  onSetActiveDeepDiveJob: (subAvatarId: string, jobId: string | null) => Promise<void>;
+  batchSelection: Set<string>;
+  onToggleBatch: (id: string) => void;
+  onBatchSelectAll: () => void;
+  onBatchSelectRecommended: () => void;
+  onBatchSelectNone: () => void;
+  batchRunning: boolean;
+  batchStatuses: Record<string, BatchSubAvatarRunStatus>;
 }
 
 function ResultView({
@@ -1076,8 +1589,56 @@ function ResultView({
   onUpdateSubAvatar,
   onRunFullExcavation,
   canRunFullExcavation,
+  projectId,
+  project,
+  onProjectChange,
+  activeDeepDiveJobs,
+  onSetActiveDeepDiveJob,
+  batchSelection,
+  onToggleBatch,
+  onBatchSelectAll,
+  onBatchSelectRecommended,
+  onBatchSelectNone,
+  batchRunning,
+  batchStatuses,
 }: ResultViewProps) {
   const { sub_avatars, comparative_table, final_recommendation, metadata, adversarial_summary } = result;
+
+  const missingClassificationCount = sub_avatars.filter(
+    (sa) => !sa.recommended_awareness_level || !sa.market_sophistication,
+  ).length;
+  const [bulkBusy, setBulkBusy] = useState<{ done: number; total: number } | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const handleClassifyAllMissing = async () => {
+    if (bulkBusy) return;
+    const targets = sub_avatars.filter(
+      (sa) => !sa.recommended_awareness_level || !sa.market_sophistication,
+    );
+    if (targets.length === 0) return;
+    setBulkBusy({ done: 0, total: targets.length });
+    setBulkError(null);
+    try {
+      let done = 0;
+      for (const sa of targets) {
+        try {
+          const classification = await generateAwarenessClassification({ core, subAvatar: sa });
+          const next = applyAwarenessClassification(sa, classification);
+          await onUpdateSubAvatar(next);
+        } catch (err) {
+          // Surface the first failure but keep going so 1 bad call doesn't
+          // wipe the whole batch — the per-card button is still there for retry.
+          setBulkError(
+            `${sa.nickname}: ${err instanceof Error ? err.message : 'classify failed'}`,
+          );
+        }
+        done += 1;
+        setBulkBusy({ done, total: targets.length });
+      }
+    } finally {
+      setBulkBusy(null);
+    }
+  };
 
   return (
     <section className="space-y-6">
@@ -1197,10 +1758,72 @@ function ResultView({
 
       {/* Sub-avatars */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-text-secondary">Sub-Avatars</h3>
-          <span className="text-[11px] text-text-muted">Pick ONE to focus the deep dive on.</span>
+          <span className="text-[11px] text-text-muted">
+            Check the ones you want in the batch — they&apos;ll run one at a time.
+          </span>
         </div>
+
+        {/* Batch bulk-select row */}
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-text-muted">Batch selection:</span>
+          <button
+            type="button"
+            onClick={onBatchSelectAll}
+            disabled={batchRunning}
+            className="px-2 py-1 rounded border border-border text-text-muted hover:text-text-primary hover:border-accent-orange disabled:opacity-40"
+          >
+            All ({sub_avatars.length})
+          </button>
+          <button
+            type="button"
+            onClick={onBatchSelectRecommended}
+            disabled={batchRunning}
+            className="px-2 py-1 rounded border border-border text-text-muted hover:text-text-primary hover:border-accent-teal disabled:opacity-40"
+          >
+            ★ Recommended only
+          </button>
+          <button
+            type="button"
+            onClick={onBatchSelectNone}
+            disabled={batchRunning}
+            className="px-2 py-1 rounded border border-border text-text-muted hover:text-text-primary disabled:opacity-40"
+          >
+            None
+          </button>
+          <span className="ml-auto text-text-primary font-semibold">
+            {batchSelection.size}/{sub_avatars.length} selected
+          </span>
+        </div>
+        {missingClassificationCount > 0 && (
+          <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-xs text-amber-200">
+              <div className="font-semibold uppercase tracking-wider text-[10px] text-amber-300">
+                {missingClassificationCount} of {sub_avatars.length} sub-avatars are missing
+                awareness + sophistication
+              </div>
+              <div className="text-[11px] text-amber-100/80 mt-0.5">
+                These were generated before the Schwartz classification existed. One Opus call per
+                sub-avatar — runs sequentially so we don&apos;t blow rate limits.
+              </div>
+            </div>
+            <button
+              onClick={handleClassifyAllMissing}
+              disabled={!!bulkBusy}
+              className="shrink-0 px-3 py-2 text-xs font-semibold rounded-lg bg-amber-500 text-black hover:bg-amber-400 disabled:opacity-40 disabled:cursor-wait"
+            >
+              {bulkBusy
+                ? `Classifying ${bulkBusy.done}/${bulkBusy.total}…`
+                : `Classify all ${missingClassificationCount} missing`}
+            </button>
+          </div>
+        )}
+        {bulkError && (
+          <div className="p-2 text-xs rounded border border-red-500/40 bg-red-500/10 text-red-300">
+            {bulkError}
+          </div>
+        )}
         {sub_avatars.map((sa) => (
           <SubAvatarCard
             key={sa.id}
@@ -1213,6 +1836,15 @@ function ResultView({
             onUpdateSubAvatar={onUpdateSubAvatar}
             onRunFullExcavation={onRunFullExcavation}
             canRunFullExcavation={canRunFullExcavation}
+            projectId={projectId}
+            project={project}
+            onProjectChange={onProjectChange}
+            activeDeepDiveJobId={activeDeepDiveJobs?.[sa.id]}
+            onSetActiveDeepDiveJob={onSetActiveDeepDiveJob}
+            isInBatch={batchSelection.has(sa.id)}
+            onToggleBatch={() => onToggleBatch(sa.id)}
+            batchDisabled={batchRunning}
+            batchStatus={batchStatuses[sa.id]}
           />
         ))}
       </div>
@@ -1239,6 +1871,15 @@ interface SubAvatarCardProps {
   onUpdateSubAvatar: (updated: SubAvatarV2) => Promise<void>;
   onRunFullExcavation?: () => void;
   canRunFullExcavation?: boolean;
+  projectId: string;
+  project: Project;
+  onProjectChange: (project: Project) => void;
+  activeDeepDiveJobId?: string;
+  onSetActiveDeepDiveJob: (subAvatarId: string, jobId: string | null) => Promise<void>;
+  isInBatch: boolean;
+  onToggleBatch: () => void;
+  batchDisabled: boolean;
+  batchStatus?: BatchSubAvatarRunStatus;
 }
 
 function SubAvatarCard({
@@ -1251,12 +1892,73 @@ function SubAvatarCard({
   onUpdateSubAvatar,
   onRunFullExcavation,
   canRunFullExcavation,
+  projectId,
+  project,
+  onProjectChange,
+  activeDeepDiveJobId,
+  onSetActiveDeepDiveJob,
+  isInBatch,
+  onToggleBatch,
+  batchDisabled,
+  batchStatus,
 }: SubAvatarCardProps) {
   const sa = subAvatar;
   const [awarenessBusy, setAwarenessBusy] = useState<AwarenessLevel | null>(null);
-  const [deepDiveBusy, setDeepDiveBusy] = useState(false);
   const [deepDiveFocus, setDeepDiveFocus] = useState('');
   const [enrichError, setEnrichError] = useState<string | null>(null);
+  const [classifyBusy, setClassifyBusy] = useState(false);
+
+  // Background deep-dive job. Survives tab close — when the user comes back,
+  // `activeDeepDiveJobId` (persisted on the project) triggers an auto-resume
+  // that re-attaches the polling loop. onComplete appends the dive to this
+  // sub-avatar; onError surfaces the message and clears the active job id.
+  const deepDiveJob = useDeepDiveJob({
+    onComplete: async (dive, subAvatarId) => {
+      if (subAvatarId !== sa.id) return;
+      const next = appendDeepDive(sa, dive);
+      await onUpdateSubAvatar(next);
+      await onSetActiveDeepDiveJob(sa.id, null);
+      setDeepDiveFocus('');
+    },
+    onError: async (message) => {
+      setEnrichError(message);
+      await onSetActiveDeepDiveJob(sa.id, null);
+    },
+  });
+
+  const deepDiveBusy = deepDiveJob.isRunning;
+
+  // Auto-resume any in-flight deep-dive when the card mounts (e.g. after a
+  // tab refresh). Runs once on mount; we intentionally omit dependencies so
+  // toggling the project state on the parent doesn't restart the loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (activeDeepDiveJobId && !deepDiveJob.activeJobId) {
+      deepDiveJob.resume(activeDeepDiveJobId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isMissingClassification =
+    !sa.recommended_awareness_level || !sa.market_sophistication;
+
+  const handleClassifyClick = async () => {
+    if (classifyBusy) return;
+    setClassifyBusy(true);
+    setEnrichError(null);
+    try {
+      const classification = await generateAwarenessClassification({
+        core,
+        subAvatar: sa,
+      });
+      const next = applyAwarenessClassification(sa, classification);
+      await onUpdateSubAvatar(next);
+    } catch (err) {
+      setEnrichError(err instanceof Error ? err.message : 'Classify call failed');
+    } finally {
+      setClassifyBusy(false);
+    }
+  };
 
   const handleAwarenessClick = async (level: AwarenessLevel) => {
     if (awarenessBusy) return;
@@ -1279,23 +1981,21 @@ function SubAvatarCard({
 
   const handleDeepDiveClick = async () => {
     if (deepDiveBusy) return;
-    setDeepDiveBusy(true);
     setEnrichError(null);
-    try {
-      const dive = await generateDeepDive({
-        core,
-        subAvatar: sa,
-        focus: deepDiveFocus.trim() || null,
-        priorDives: sa.deep_dives ?? [],
-      });
-      const next = appendDeepDive(sa, dive);
-      await onUpdateSubAvatar(next);
-      setDeepDiveFocus('');
-    } catch (err) {
-      setEnrichError(err instanceof Error ? err.message : 'Deep-dive call failed');
-    } finally {
-      setDeepDiveBusy(false);
-    }
+    const jobId = await deepDiveJob.start({
+      projectId,
+      core,
+      subAvatar: sa,
+      focus: deepDiveFocus.trim() || null,
+      priorDives: sa.deep_dives ?? [],
+    });
+    if (jobId) await onSetActiveDeepDiveJob(sa.id, jobId);
+  };
+
+  const handleDeepDiveCancel = async () => {
+    if (!deepDiveJob.activeJobId) return;
+    await deepDiveJob.cancel();
+    await onSetActiveDeepDiveJob(sa.id, null);
   };
 
   const borderClass = isSelected
@@ -1303,20 +2003,153 @@ function SubAvatarCard({
     : sa.recommended_for_test
     ? 'border-accent-teal/50'
     : 'border-border';
+
+  // Build the unified, ranked top-hooks list. Prefer the scored_hooks
+  // block when present (Opus assigned curiosity / intensity / relevance
+  // 1-10 to each), and fall back to the simpler `angles.hooks` strings.
+  // Sorted by total score so the strongest hook is always at index 0.
+  const topHooks: Array<{ hook: string; total: number; breakdown?: string }> =
+    (sa.scored_hooks?.length ?? 0) > 0
+      ? [...sa.scored_hooks!]
+          .map((h) => ({
+            hook: h.hook,
+            total: h.curiosity_score + h.intensity_score + h.relevance_score,
+            breakdown: `curiosity ${h.curiosity_score} · intensity ${h.intensity_score} · relevance ${h.relevance_score}`,
+          }))
+          .sort((a, b) => b.total - a.total)
+      : (sa.angles?.hooks ?? []).map((h) => ({ hook: h, total: 0 }));
+
+  const heroHook = topHooks[0];
+
+  // Build the unified, ranked ANGLES list. The primary angle (sa.angles) is
+  // index 0, then any additional_angles stacked from reverse-engineering or
+  // enrichment passes. Each angle = positioning framework + description +
+  // story arc — these are the BIG STRATEGIC DIRECTIONS, not just tactical
+  // hooks. Surfacing them prominently so the user can pick which angle to
+  // run with downstream.
+  const allAngles: Array<{
+    framework: string;
+    description: string;
+    rationale: string;
+    hooks: string[];
+    story: { problem: string; agitation: string; solution: string; mechanism: string; cta: string } | null;
+    label: 'primary' | 'extra';
+  }> = [];
+  if (sa.angles) {
+    allAngles.push({
+      framework: sa.angles.positioning?.framework ?? 'positioning',
+      description: sa.angles.positioning?.description ?? '',
+      rationale: sa.angles.positioning?.rationale ?? '',
+      hooks: sa.angles.hooks ?? [],
+      story: sa.angles.story_angle ?? null,
+      label: 'primary',
+    });
+  }
+  for (const a of sa.additional_angles ?? []) {
+    allAngles.push({
+      framework: a.positioning?.framework ?? 'positioning',
+      description: a.positioning?.description ?? '',
+      rationale: a.positioning?.rationale ?? '',
+      hooks: a.hooks ?? [],
+      story: a.story_angle ?? null,
+      label: 'extra',
+    });
+  }
+
+  // Batch-mode derived UI hints
+  const batchBadgeColor =
+    batchStatus?.status === 'completed' ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+    : batchStatus?.status === 'failed' ? 'bg-red-500/20 border-red-500/40 text-red-300'
+    : batchStatus?.status === 'running' ? 'bg-accent-orange/20 border-accent-orange/40 text-accent-orange'
+    : batchStatus?.status === 'queued' ? 'bg-text-muted/20 border-border text-text-muted'
+    : '';
+
   return (
-    <div className={`border rounded-xl transition-all ${borderClass} bg-bg-card`}>
+    <div className={`border rounded-xl transition-all ${borderClass} ${isInBatch ? 'ring-1 ring-accent-orange/30' : ''} bg-bg-card`}>
       <div className="w-full p-4 flex items-center justify-between gap-3">
+        {/* Batch-selection checkbox — stops click propagation to the expand button */}
+        <label
+          className={`shrink-0 flex items-center gap-2 px-2 py-1 rounded border cursor-pointer select-none ${
+            isInBatch
+              ? 'border-accent-orange/50 bg-accent-orange/10'
+              : 'border-border hover:border-accent-orange/40'
+          } ${batchDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+          onClick={(e) => e.stopPropagation()}
+          title="Include this sub-avatar in the batch run"
+        >
+          <input
+            type="checkbox"
+            checked={isInBatch}
+            disabled={batchDisabled}
+            onChange={onToggleBatch}
+            className="w-4 h-4 accent-accent-orange"
+          />
+          <span className="text-[10px] uppercase tracking-wider font-bold text-text-muted">
+            Batch
+          </span>
+        </label>
         <button
           onClick={onToggle}
           className="flex items-center gap-3 text-left flex-1 hover:opacity-80"
         >
           {sa.recommended_for_test && <span className="text-accent-teal">★</span>}
           {isSelected && <span className="text-accent-orange text-xs font-bold">◉ FOCUS</span>}
-          <div>
+          {batchStatus && (
+            <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-bold ${batchBadgeColor}`}>
+              {batchStatus.status === 'running' && batchStatus.currentGate
+                ? `▶ ${batchStatus.currentGate}`
+                : batchStatus.status}
+              {batchStatus.completedGates.length > 0 && (
+                <span className="ml-1 opacity-70">
+                  {batchStatus.completedGates.length}/{batchStatus.plannedGates?.length ?? 8}
+                </span>
+              )}
+            </span>
+          )}
+          <div className="flex-1 min-w-0">
             <div className="font-semibold text-text-primary">{sa.name}</div>
             <div className="text-xs text-text-muted">
               {sa.nickname} · dominant: {sa.dominant_category} · urgency {sa.urgency_score}/10
             </div>
+            {(sa.recommended_awareness_level || sa.market_sophistication) && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {sa.recommended_awareness_level && (
+                  <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-accent-teal/15 border border-accent-teal/40 text-accent-teal font-semibold">
+                    {AWARENESS_LABEL[sa.recommended_awareness_level]}
+                  </span>
+                )}
+                {sa.market_sophistication && (
+                  <span
+                    className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border font-semibold ${
+                      sa.market_sophistication.stage <= 2
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                        : sa.market_sophistication.stage === 3
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                        : 'bg-red-500/15 border-red-500/40 text-red-300'
+                    }`}
+                  >
+                    Soph {sa.market_sophistication.stage}/5 · {sa.market_sophistication.stage_name}
+                  </span>
+                )}
+              </div>
+            )}
+            {isMissingClassification && (
+              <div className="mt-1.5">
+                <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-semibold">
+                  ⚠ Missing awareness + sophistication
+                </span>
+              </div>
+            )}
+            {heroHook && (
+              <div className="mt-2 flex items-start gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-accent-orange font-bold shrink-0 mt-0.5">
+                  Top hook
+                </span>
+                <span className="text-sm text-text-primary font-medium leading-snug">
+                  &ldquo;{heroHook.hook}&rdquo;
+                </span>
+              </div>
+            )}
           </div>
         </button>
         <div className="flex items-center gap-2 shrink-0">
@@ -1340,6 +2173,17 @@ function SubAvatarCard({
         </div>
       </div>
 
+      {batchStatus?.status === 'failed' && batchStatus.reason && (
+        <div className="px-4 pb-3">
+          <div className="p-2 rounded border border-red-500/40 bg-red-500/5 text-[11px] text-red-300">
+            <span className="font-bold uppercase tracking-wider text-[10px] mr-2">
+              ✖ Failed at {batchStatus.stoppedAt ?? '?'}
+            </span>
+            <span className="text-red-200/90 break-words">{batchStatus.reason}</span>
+          </div>
+        </div>
+      )}
+
       {isExpanded && (
         <div className="px-4 pb-4 space-y-4 text-sm">
           {sa.is_from_reverse_engineer && (
@@ -1351,6 +2195,291 @@ function SubAvatarCard({
             />
           )}
           <p className="text-text-secondary">{sa.description}</p>
+
+          {isMissingClassification && (
+            <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/5 flex items-center justify-between gap-3">
+              <div className="text-xs text-amber-200">
+                <div className="font-semibold uppercase tracking-wider text-[10px] text-amber-300">
+                  Awareness + sophistication missing
+                </div>
+                <div className="text-[11px] text-amber-100/80 mt-0.5">
+                  This sub-avatar was generated before these fields existed. Run a one-shot Opus
+                  classification on its verbatims to backfill the Schwartz awareness level + market
+                  sophistication stage.
+                </div>
+              </div>
+              <button
+                onClick={handleClassifyClick}
+                disabled={classifyBusy}
+                className="shrink-0 px-3 py-2 text-xs font-semibold rounded-lg bg-amber-500 text-black hover:bg-amber-400 disabled:opacity-40 disabled:cursor-wait"
+              >
+                {classifyBusy ? 'Classifying…' : 'Classify now'}
+              </button>
+            </div>
+          )}
+
+          {(sa.recommended_awareness_level || sa.market_sophistication) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {sa.recommended_awareness_level && (
+                <div className="p-3 rounded-lg border border-accent-teal/40 bg-accent-teal/5 space-y-1">
+                  <div className="text-[10px] uppercase tracking-wider text-accent-teal font-bold">
+                    Recommended awareness level
+                  </div>
+                  <div className="text-sm font-semibold text-text-primary">
+                    {AWARENESS_LABEL[sa.recommended_awareness_level]}
+                  </div>
+                  <div className="text-[11px] text-text-muted italic">
+                    {AWARENESS_DESCRIPTION[sa.recommended_awareness_level]}
+                  </div>
+                  {sa.recommended_awareness_reason && (
+                    <div className="text-xs text-text-secondary pt-1 border-t border-accent-teal/20 mt-1">
+                      <span className="text-text-muted">Why: </span>
+                      {sa.recommended_awareness_reason}
+                    </div>
+                  )}
+                </div>
+              )}
+              {sa.market_sophistication && (
+                <div
+                  className={`p-3 rounded-lg border space-y-1 ${
+                    sa.market_sophistication.stage <= 2
+                      ? 'border-emerald-500/40 bg-emerald-500/5'
+                      : sa.market_sophistication.stage === 3
+                      ? 'border-amber-500/40 bg-amber-500/5'
+                      : 'border-red-500/40 bg-red-500/5'
+                  }`}
+                >
+                  <div
+                    className={`text-[10px] uppercase tracking-wider font-bold ${
+                      sa.market_sophistication.stage <= 2
+                        ? 'text-emerald-400'
+                        : sa.market_sophistication.stage === 3
+                        ? 'text-amber-400'
+                        : 'text-red-400'
+                    }`}
+                  >
+                    Market sophistication
+                  </div>
+                  <div className="text-sm font-semibold text-text-primary">
+                    Stage {sa.market_sophistication.stage}/5 · {sa.market_sophistication.stage_name}
+                  </div>
+                  <div className="text-[11px] text-text-muted italic">
+                    {sa.market_sophistication.recommended_approach}
+                  </div>
+                  {sa.market_sophistication.reasoning && (
+                    <div className="text-xs text-text-secondary pt-1 border-t border-white/10 mt-1">
+                      <span className="text-text-muted">Why: </span>
+                      {sa.market_sophistication.reasoning}
+                    </div>
+                  )}
+                  {sa.market_sophistication.copy_implications?.length > 0 && (
+                    <ul className="text-[11px] text-text-secondary list-disc list-inside pt-1 space-y-0.5">
+                      {sa.market_sophistication.copy_implications.slice(0, 5).map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {topHooks.length > 0 && (
+            <div className="rounded-xl border-2 border-accent-orange/50 bg-gradient-to-br from-accent-orange/10 via-bg-card to-bg-card p-4 space-y-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h4 className="text-sm uppercase tracking-widest font-black text-accent-orange flex items-center gap-2">
+                  <span className="text-base">🎯</span> Ads Hooks
+                  <span className="text-text-muted font-normal text-xs normal-case tracking-normal">
+                    — copy these into your ad headlines
+                  </span>
+                </h4>
+                <span className="text-[10px] text-text-muted">{topHooks.length} ranked</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(topHooks[0].hook).catch(() => null)}
+                className="block w-full text-left rounded-lg bg-bg-primary border border-accent-orange/40 p-3 hover:border-accent-orange transition group"
+                title="Click to copy"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-accent-orange text-white rounded">
+                    #1
+                  </span>
+                  {topHooks[0].total > 0 && (
+                    <span className="text-[10px] text-accent-orange font-semibold">
+                      score {topHooks[0].total}/30
+                    </span>
+                  )}
+                  <span className="ml-auto text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition">
+                    click to copy
+                  </span>
+                </div>
+                <div className="text-base font-semibold text-text-primary leading-snug">
+                  &ldquo;{topHooks[0].hook}&rdquo;
+                </div>
+                {topHooks[0].breakdown && (
+                  <div className="text-[10px] text-text-muted mt-1.5">
+                    {topHooks[0].breakdown}
+                  </div>
+                )}
+              </button>
+
+              {topHooks.slice(1, 5).map((h, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(h.hook).catch(() => null)}
+                  className="block w-full text-left rounded-lg bg-bg-primary/60 border border-border p-2.5 hover:border-accent-orange/60 transition group"
+                  title="Click to copy"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted shrink-0">
+                      #{i + 2}
+                    </span>
+                    <span className="text-sm text-text-primary leading-snug flex-1">
+                      &ldquo;{h.hook}&rdquo;
+                    </span>
+                    {h.total > 0 && (
+                      <span className="text-[10px] text-text-muted shrink-0">{h.total}/30</span>
+                    )}
+                  </div>
+                  {h.breakdown && (
+                    <div className="text-[10px] text-text-muted mt-1 ml-6">{h.breakdown}</div>
+                  )}
+                </button>
+              ))}
+
+              {topHooks.length > 5 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-text-muted hover:text-text-primary">
+                    + {topHooks.length - 5} more hooks
+                  </summary>
+                  <div className="mt-2 space-y-1.5 pl-3">
+                    {topHooks.slice(5).map((h, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => navigator.clipboard.writeText(h.hook).catch(() => null)}
+                        className="block w-full text-left text-text-secondary hover:text-text-primary"
+                        title="Click to copy"
+                      >
+                        <span className="text-text-muted">#{i + 6}</span> &ldquo;{h.hook}&rdquo;
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
+          {allAngles.length > 0 && (
+            <div className="rounded-xl border-2 border-accent-teal/50 bg-gradient-to-br from-accent-teal/10 via-bg-card to-bg-card p-4 space-y-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h4 className="text-sm uppercase tracking-widest font-black text-accent-teal flex items-center gap-2">
+                  <span className="text-base">🧭</span> Ad ANGLES
+                  <span className="text-text-muted font-normal text-xs normal-case tracking-normal">
+                    — strategic directions to run for this avatar
+                  </span>
+                </h4>
+                <span className="text-[10px] text-text-muted">
+                  {allAngles.length} angle{allAngles.length > 1 ? 's' : ''}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {allAngles.map((angle, idx) => {
+                  const isPrimary = idx === 0;
+                  const storyText = angle.story
+                    ? `Problem: ${angle.story.problem}\nAgitation: ${angle.story.agitation}\nSolution: ${angle.story.solution}\nMechanism: ${angle.story.mechanism}\nCTA: ${angle.story.cta}`
+                    : '';
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded-lg p-3 border ${
+                        isPrimary
+                          ? 'bg-bg-primary border-accent-teal/50'
+                          : 'bg-bg-primary/60 border-border'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                            isPrimary
+                              ? 'bg-accent-teal text-white'
+                              : 'bg-bg-card text-text-secondary border border-border'
+                          }`}
+                        >
+                          #{idx + 1}
+                        </span>
+                        <span className="text-base font-bold text-text-primary uppercase tracking-wide">
+                          {angle.framework.replace(/_/g, ' ')}
+                        </span>
+                        {angle.label === 'extra' && (
+                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent-teal/10 text-accent-teal border border-accent-teal/30">
+                            extra angle
+                          </span>
+                        )}
+                        {storyText && (
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard.writeText(storyText).catch(() => null)}
+                            className="ml-auto text-[10px] text-text-muted hover:text-accent-teal"
+                            title="Copy full story arc"
+                          >
+                            copy story
+                          </button>
+                        )}
+                      </div>
+
+                      {angle.description && (
+                        <p className="text-sm text-text-primary leading-snug mb-1">
+                          {angle.description}
+                        </p>
+                      )}
+                      {angle.rationale && (
+                        <p className="text-[11px] text-text-muted italic mb-2">
+                          Why: {angle.rationale}
+                        </p>
+                      )}
+
+                      {angle.story && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs mt-2 pt-2 border-t border-border/60">
+                          <StoryStep label="Problem" value={angle.story.problem} tone="red" />
+                          <StoryStep label="Agitation" value={angle.story.agitation} tone="orange" />
+                          <StoryStep label="Solution" value={angle.story.solution} tone="teal" />
+                          <StoryStep label="Mechanism" value={angle.story.mechanism} tone="violet" />
+                          <StoryStep label="CTA" value={angle.story.cta} tone="emerald" />
+                        </div>
+                      )}
+
+                      {angle.hooks.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/60">
+                          <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+                            Hooks for this angle
+                          </div>
+                          <ul className="space-y-1">
+                            {angle.hooks.map((h, hi) => (
+                              <li key={hi}>
+                                <button
+                                  type="button"
+                                  onClick={() => navigator.clipboard.writeText(h).catch(() => null)}
+                                  className="block w-full text-left text-xs text-text-secondary hover:text-text-primary"
+                                  title="Click to copy"
+                                >
+                                  <span className="text-accent-teal">▸</span> &ldquo;{h}&rdquo;
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3 text-xs">
             <Metric label="Urgency" value={`${sa.urgency_score}/10`} />
@@ -1409,43 +2538,6 @@ function SubAvatarCard({
             </Block>
           )}
 
-          {sa.angles && (
-            <div className="space-y-3 p-3 bg-bg-primary rounded-lg border border-border">
-              <div className="text-xs font-semibold uppercase text-accent-orange">3 Angles</div>
-
-              <Block title={`Positioning — ${sa.angles.positioning?.framework}`}>
-                <p className="text-xs text-text-secondary">{sa.angles.positioning?.description}</p>
-                <p className="text-[10px] text-text-muted italic mt-1">
-                  Why: {sa.angles.positioning?.rationale}
-                </p>
-              </Block>
-
-              {sa.angles.hooks?.length > 0 && (
-                <Block title="Hooks">
-                  <ul className="space-y-1">
-                    {sa.angles.hooks.map((h, i) => (
-                      <li key={i} className="text-xs text-text-secondary">
-                        <span className="text-accent-orange">{i + 1}.</span> {h}
-                      </li>
-                    ))}
-                  </ul>
-                </Block>
-              )}
-
-              {sa.angles.story_angle && (
-                <Block title="Story arc">
-                  <dl className="text-xs text-text-secondary space-y-1">
-                    <StoryRow label="Problem" value={sa.angles.story_angle.problem} />
-                    <StoryRow label="Agitation" value={sa.angles.story_angle.agitation} />
-                    <StoryRow label="Solution" value={sa.angles.story_angle.solution} />
-                    <StoryRow label="Mechanism" value={sa.angles.story_angle.mechanism} />
-                    <StoryRow label="CTA" value={sa.angles.story_angle.cta} />
-                  </dl>
-                </Block>
-              )}
-            </div>
-          )}
-
           <ReverseEnrichmentSections subAvatar={sa} />
 
           {sa.recommended_for_test && sa.recommendation_reason && (
@@ -1464,10 +2556,18 @@ function SubAvatarCard({
                   ? 'bg-amber-500/10 border-amber-500/30'
                   : 'bg-red-500/10 border-red-500/30'
               }`}
+              title={sa.is_from_reverse_engineer
+                ? "Confidence on reverse-engineered avatars is scored on specificity + coherence + ad-readiness (Track B), NOT cross-source density — so a single-source reverse-engineer can legitimately score 85+. If you see a low score, it means the competitor intel was shallow (generic pains, no named mechanism, weak verbatims). Re-run reverse-engineer with a BrandSearch domain to deepen it."
+                : "Confidence is scored by an auditor LLM on cross-source evidence density (Track A). Multi-source organic research (Reddit/Quora/TikTok/forums) scores highest. Run Deep Excavate to raise it."}
             >
               <div className="flex items-center justify-between">
                 <div className="font-semibold uppercase tracking-wide text-text-primary">
                   Adversarial validation
+                  <span className="ml-2 text-[10px] text-text-muted normal-case tracking-normal">
+                    {sa.is_from_reverse_engineer
+                      ? '(Track B — specificity + coherence audit)'
+                      : '(Track A — cross-source evidence audit)'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">
                   <span className="px-2 py-0.5 rounded-full bg-bg-primary border border-border text-text-secondary">
@@ -1612,10 +2712,37 @@ function SubAvatarCard({
                 className="px-3 py-2 bg-accent-teal/10 border border-accent-teal text-accent-teal text-xs font-semibold rounded-lg hover:bg-accent-teal/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 {deepDiveBusy
-                  ? 'Digging deeper…'
+                  ? 'Running in background…'
                   : `Approfondis +${(sa.deep_dives?.length ?? 0) > 0 ? ' encore' : ''}`}
               </button>
+              {deepDiveBusy && (
+                <button
+                  type="button"
+                  onClick={handleDeepDiveCancel}
+                  className="px-3 py-2 bg-error/10 border border-error/40 text-error text-xs font-semibold rounded-lg hover:bg-error/20 shrink-0"
+                >
+                  Cancel
+                </button>
+              )}
             </div>
+
+            {deepDiveBusy && (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[10px] text-text-muted">
+                  <span>
+                    {deepDiveJob.progress?.message ??
+                      'Worker started — you can close this tab and come back.'}
+                  </span>
+                  <span className="font-mono">{deepDiveJob.progress?.percent ?? 0}%</span>
+                </div>
+                <div className="h-1 bg-bg-input rounded overflow-hidden">
+                  <div
+                    className="h-full bg-accent-teal transition-all"
+                    style={{ width: `${deepDiveJob.progress?.percent ?? 5}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {(sa.deep_dives?.length ?? 0) > 0 && (
               <div className="space-y-3 pt-2 border-t border-border">
@@ -1625,6 +2752,17 @@ function SubAvatarCard({
               </div>
             )}
           </div>
+
+          {/* ================================ */}
+          {/* BOOSTER — feedback loop (N cycles) */}
+          {/* ================================ */}
+          <BoosterPanel
+            project={project}
+            core={core}
+            subAvatar={sa}
+            onUpdateSubAvatar={onUpdateSubAvatar}
+            onProjectChange={onProjectChange}
+          />
 
           {enrichError && (
             <div className="p-2 bg-error/10 border border-error/30 rounded text-xs text-error">
@@ -2230,6 +3368,32 @@ function StoryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+const STORY_STEP_TONES: Record<'red' | 'orange' | 'teal' | 'violet' | 'emerald', string> = {
+  red: 'border-red-500/30 bg-red-500/5 text-red-300',
+  orange: 'border-accent-orange/30 bg-accent-orange/5 text-accent-orange',
+  teal: 'border-accent-teal/30 bg-accent-teal/5 text-accent-teal',
+  violet: 'border-violet-500/30 bg-violet-500/5 text-violet-300',
+  emerald: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300',
+};
+
+function StoryStep({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: keyof typeof STORY_STEP_TONES;
+}) {
+  if (!value) return null;
+  return (
+    <div className={`rounded-md border p-2 ${STORY_STEP_TONES[tone]}`}>
+      <div className="text-[10px] uppercase tracking-wider font-bold mb-0.5">{label}</div>
+      <div className="text-xs text-text-primary leading-snug">{value}</div>
+    </div>
+  );
+}
+
 // ============================================================
 // REVERSE-ENGINEER ENRICHMENT DISPLAY
 // ============================================================
@@ -2289,7 +3453,6 @@ function ReverseEngineerWarningBanner({
 function ReverseEnrichmentSections({ subAvatar }: { subAvatar: SubAvatarV2 }) {
   const sa = subAvatar;
   const hasAny =
-    (sa.additional_angles?.length ?? 0) > 0 ||
     (sa.sensory_triggers?.length ?? 0) > 0 ||
     (sa.structured_past_attempts?.length ?? 0) > 0 ||
     (sa.scored_hooks?.length ?? 0) > 0 ||
@@ -2320,50 +3483,6 @@ function ReverseEnrichmentSections({ subAvatar }: { subAvatar: SubAvatarV2 }) {
       {sa.bridge_moment && (
         <Block title="Bridge moment">
           <p className="text-xs text-text-secondary italic leading-relaxed">&ldquo;{sa.bridge_moment}&rdquo;</p>
-        </Block>
-      )}
-
-      {(sa.additional_angles?.length ?? 0) > 0 && (
-        <Block title={`Additional angles (${sa.additional_angles!.length})`}>
-          <div className="space-y-3">
-            {sa.additional_angles!.map((angle, i) => (
-              <div
-                key={i}
-                className="p-2.5 bg-bg-card border border-border rounded-lg space-y-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-text-muted">#{i + 2}</span>
-                  <span className="text-[11px] font-semibold uppercase text-accent-orange">
-                    {angle.positioning.framework.replace(/_/g, ' ')}
-                  </span>
-                </div>
-                <p className="text-xs text-text-secondary">{angle.positioning.description}</p>
-                {angle.positioning.rationale && (
-                  <p className="text-[10px] text-text-muted italic">
-                    Why: {angle.positioning.rationale}
-                  </p>
-                )}
-                {angle.hooks.length > 0 && (
-                  <ul className="space-y-0.5 pt-1 border-t border-border/50">
-                    {angle.hooks.map((h, j) => (
-                      <li key={j} className="text-[11px] text-text-secondary">
-                        <span className="text-accent-orange">{j + 1}.</span> {h}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {angle.story_angle && (
-                  <dl className="text-[11px] text-text-secondary space-y-0.5 pt-1 border-t border-border/50">
-                    <StoryRow label="Problem" value={angle.story_angle.problem} />
-                    <StoryRow label="Agitation" value={angle.story_angle.agitation} />
-                    <StoryRow label="Solution" value={angle.story_angle.solution} />
-                    <StoryRow label="Mechanism" value={angle.story_angle.mechanism} />
-                    <StoryRow label="CTA" value={angle.story_angle.cta} />
-                  </dl>
-                )}
-              </div>
-            ))}
-          </div>
         </Block>
       )}
 

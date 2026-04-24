@@ -5,6 +5,7 @@
 // ============================================================
 
 import { RawSourceItem, SourceType } from '../avatars/types';
+import { apiUrl } from '../util/apiBaseUrl';
 
 // === LOW-LEVEL API CALLS ===
 
@@ -27,16 +28,23 @@ export interface WebSearchResponse {
   query: string;
 }
 
+// Per-call client timeouts. Without them a single stuck Firecrawl/Tavily
+// request could hang the worker pool until the upstream itself times out,
+// blowing the whole excavation budget.
+const SCRAPE_CLIENT_TIMEOUT_MS = 50_000; // route has 55s upstream cap
+const SEARCH_CLIENT_TIMEOUT_MS = 50_000; // route has 55s upstream cap
+
 /**
  * Scrape a URL via Firecrawl → clean markdown.
  * Fails gracefully: returns null instead of throwing.
  */
 export async function scrapeUrl(url: string): Promise<ScrapedPage | null> {
   try {
-    const res = await fetch('/api/scrape', {
+    const res = await fetch(apiUrl('/api/scrape'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(SCRAPE_CLIENT_TIMEOUT_MS),
     });
 
     if (!res.ok) return null;
@@ -60,7 +68,7 @@ export async function webSearch(
   options: { maxResults?: number; searchDepth?: 'basic' | 'advanced' } = {},
 ): Promise<WebSearchResponse | null> {
   try {
-    const res = await fetch('/api/search', {
+    const res = await fetch(apiUrl('/api/search'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -68,6 +76,7 @@ export async function webSearch(
         maxResults: options.maxResults ?? 10,
         searchDepth: options.searchDepth ?? 'advanced',
       }),
+      signal: AbortSignal.timeout(SEARCH_CLIENT_TIMEOUT_MS),
     });
 
     if (!res.ok) return null;
@@ -85,11 +94,12 @@ export async function webSearch(
 
 /**
  * Scrape many URLs in parallel with a concurrency limit.
- * Null results are filtered out.
+ * Null results are filtered out. Per-URL timeout is already enforced in
+ * scrapeUrl, so one stuck URL can't block the pool past 50s.
  */
 export async function scrapeMany(
   urls: string[],
-  concurrency = 4,
+  concurrency = 8,
 ): Promise<ScrapedPage[]> {
   const results: ScrapedPage[] = [];
   const queue = [...urls];

@@ -15,6 +15,7 @@
 
 import { RawSourceData, SourceDiscoveryPlan } from '../avatars/types';
 import { scrapeMany, webSearch, toRawItem, languageModifier } from './common';
+import { apiUrl } from '../util/apiBaseUrl';
 
 export interface TikTokFetchOptions {
   maxVideos?: number;        // default 25
@@ -52,7 +53,7 @@ async function scrapeViaApify(
   payload: Record<string, unknown>,
 ): Promise<ApifyCallResult> {
   try {
-    const res = await fetch('/api/tiktok', {
+    const res = await fetch(apiUrl('/api/tiktok'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
