@@ -48,16 +48,20 @@ export class BrightDataYouTubeAdapter implements VideoProvider {
     const videosId = requireEnv('BRIGHTDATA_DATASET_ID_YOUTUBE_VIDEOS') ?? VIDEOS_DEFAULT;
     const maxVideos = Math.min(opts.maxVideos ?? 16, 50);
 
+    // YouTube videos dataset — schema requires start_date + end_date (can be empty)
     const inputs = [{
-      url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+      keyword: query,
       num_of_posts: maxVideos,
-      language: opts.language,
+      country: '',
+      start_date: '',
+      end_date: '',
     }];
 
     const rows = await brightDataCollect<YouTubeVideoRow>({
       providerId: this.id,
       datasetId: videosId,
       inputs,
+      discoverBy: 'keyword',
     });
 
     const videos: VideoResult[] = [];
@@ -93,6 +97,7 @@ export class BrightDataYouTubeAdapter implements VideoProvider {
           providerId: this.id,
           datasetId: commentsId,
           inputs: cInputs,
+          discoverBy: 'video_url',
         });
         const byVideo = new Map<string, YouTubeCommentRow[]>();
         for (const c of commentRows) {

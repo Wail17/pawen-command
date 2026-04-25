@@ -30,16 +30,14 @@ export class BrightDataQuoraAdapter implements SocialProvider {
     const datasetId = requireEnv('BRIGHTDATA_DATASET_ID_QUORA') ?? DEFAULT_QUORA;
     const limit = opts.maxThreads ?? 15;
 
-    const inputs = [{
-      url: `https://www.quora.com/search?q=${encodeURIComponent(query)}`,
-      num_of_questions: limit,
-      include_answers: true,
-    }];
+    // Per Bright Data: Quora dataset only supports discover_by=search_url
+    const inputs = [{ url: `https://www.quora.com/search?q=${encodeURIComponent(query)}` }];
 
     const rows = await brightDataCollect<QuoraRow>({
       providerId: this.id,
       datasetId,
       inputs,
+      discoverBy: 'search_url',
     });
 
     return rows.slice(0, limit).filter(r => r.url).map(r => {

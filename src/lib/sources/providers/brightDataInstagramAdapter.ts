@@ -56,13 +56,20 @@ export class BrightDataInstagramAdapter implements VideoProvider {
       : (requireEnv('BRIGHTDATA_DATASET_ID_INSTAGRAM_POSTS') ?? POSTS_DEFAULT);
 
     const maxVideos = Math.min(opts.maxVideos ?? 20, 100);
-    const url = isHashtag
-      ? `https://www.instagram.com/explore/tags/${encodeURIComponent(query.replace(/^#/, ''))}/`
-      : `https://www.instagram.com/explore/search/?q=${encodeURIComponent(query)}`;
+    let inputs: unknown;
+    let discoverBy: string;
+    if (isHashtag) {
+      inputs = [{
+        url: `https://www.instagram.com/explore/tags/${encodeURIComponent(query.replace(/^#/, ''))}/`,
+        num_of_posts: maxVideos,
+      }];
+      discoverBy = 'hashtag_url';
+    } else {
+      inputs = [{ keyword: query, num_of_posts: maxVideos }];
+      discoverBy = 'keyword';
+    }
 
-    const inputs = [{ url, num_of_posts: maxVideos }];
-
-    const rows = await brightDataCollect<IgPostRow>({ providerId: this.id, datasetId, inputs });
+    const rows = await brightDataCollect<IgPostRow>({ providerId: this.id, datasetId, inputs, discoverBy });
 
     const videos: VideoResult[] = [];
     for (const r of rows.slice(0, maxVideos)) {
@@ -97,6 +104,7 @@ export class BrightDataInstagramAdapter implements VideoProvider {
           providerId: this.id,
           datasetId: commentsId,
           inputs: cInputs,
+          discoverBy: 'post_url',
         });
         const byVideo = new Map<string, IgCommentRow[]>();
         for (const c of commentRows) {

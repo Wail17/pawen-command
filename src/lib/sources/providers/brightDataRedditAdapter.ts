@@ -52,20 +52,29 @@ export class BrightDataRedditAdapter implements SocialProvider {
     const limit = opts.maxThreads ?? 20;
     const subs = (opts.subreddits ?? []).map(s => s.replace(/^r\//, ''));
 
-    // Build trigger URLs — one per sub (or 'all' if none specified)
-    const triggers = (subs.length > 0 ? subs : ['all']).slice(0, 6).map(sub => ({
-      url: sub === 'all'
-        ? `https://www.reddit.com/search/?q=${encodeURIComponent(query)}&sort=relevance`
-        : `https://www.reddit.com/r/${sub}/search/?q=${encodeURIComponent(query)}&restrict_sr=1&sort=relevance`,
-      num_of_posts: limit,
-      include_comments: false,
-      language: opts.language,
-    }));
+    // For URL-based discovery (search inside specific subreddit), Bright Data
+    // expects discover_by=subreddit_url with [{url, num_of_posts}].
+    // For keyword discovery (no subreddit list), discover_by=keyword with
+    // [{keyword, num_of_posts}]. Pick whichever fits the input shape.
+    const useSubredditUrls = subs.length > 0;
+    let triggers: unknown;
+    let discoverBy: string;
+    if (useSubredditUrls) {
+      triggers = subs.slice(0, 6).map(sub => ({
+        url: `https://www.reddit.com/r/${sub}/search/?q=${encodeURIComponent(query)}&restrict_sr=1&sort=relevance`,
+        num_of_posts: limit,
+      }));
+      discoverBy = 'subreddit_url';
+    } else {
+      triggers = [{ keyword: query, num_of_posts: limit, language: opts.language }];
+      discoverBy = 'keyword';
+    }
 
     const postRows = await brightDataCollect<RedditPostRow>({
       providerId: this.id,
       datasetId: postsId,
       inputs: triggers,
+      discoverBy,
     });
 
     const posts: SocialResult[] = [];
@@ -100,6 +109,7 @@ export class BrightDataRedditAdapter implements SocialProvider {
           providerId: this.id,
           datasetId: commentsId,
           inputs: commentInputs,
+          discoverBy: 'post_url',
         });
         // Group by parent post URL
         const byPost = new Map<string, RedditCommentRow[]>();

@@ -48,16 +48,23 @@ export class BrightDataTikTokAdapter implements VideoProvider {
     const postsId = requireEnv('BRIGHTDATA_DATASET_ID_TIKTOK_POSTS') ?? POSTS_DEFAULT;
     const maxVideos = Math.min(opts.maxVideos ?? 25, 100);
 
-    const url = opts.mode === 'hashtag'
-      ? `https://www.tiktok.com/tag/${encodeURIComponent(query.replace(/^#/, ''))}`
-      : `https://www.tiktok.com/search?q=${encodeURIComponent(query)}`;
-
-    const inputs = [{ url, num_of_posts: maxVideos, language: opts.language }];
+    let inputs: unknown;
+    let discoverBy: string;
+    if (opts.mode === 'hashtag') {
+      inputs = [{ url: `https://www.tiktok.com/tag/${encodeURIComponent(query.replace(/^#/, ''))}`, num_of_posts: maxVideos }];
+      discoverBy = 'hashtag_url';
+    } else {
+      // TikTok posts dataset — only `search_keyword` + `num_of_posts` allowed.
+      // `start_date`, `end_date`, `country` are rejected.
+      inputs = [{ search_keyword: query, num_of_posts: maxVideos }];
+      discoverBy = 'keyword';
+    }
 
     const postRows = await brightDataCollect<TikTokPostRow>({
       providerId: this.id,
       datasetId: postsId,
       inputs,
+      discoverBy,
     });
 
     const videos: VideoResult[] = [];
@@ -94,6 +101,7 @@ export class BrightDataTikTokAdapter implements VideoProvider {
           providerId: this.id,
           datasetId: commentsId,
           inputs,
+          discoverBy: 'post_url',
         });
         const byVideo = new Map<string, TikTokCommentRow[]>();
         for (const c of commentRows) {

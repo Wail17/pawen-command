@@ -10,8 +10,8 @@ import { ProviderError, type ProviderHealth } from './types';
 import { fetchWithTimeout, missingEnvHealth, nowIso, requireEnv } from './common';
 
 const BD_BASE = 'https://api.brightdata.com/datasets/v3';
-const POLL_INTERVAL_MS = 3_000;
-const POLL_TIMEOUT_MS  = 90_000;
+const POLL_INTERVAL_MS = 4_000;
+const POLL_TIMEOUT_MS  = 270_000;   // up to 4.5 min — BD datasets are slow on cold start
 
 interface TriggerOk {
   snapshot_id?: string;
@@ -21,19 +21,29 @@ interface TriggerOk {
 /**
  * Trigger a Bright Data dataset collection and poll for completion.
  * `inputs` is the JSON body the dataset's trigger endpoint expects.
+ * `discoverBy` is REQUIRED by most BD datasets (e.g. 'keyword',
+ * 'subreddit_url', 'post_url', 'hashtag_url', 'profile_url'). The
+ * specific value depends on the dataset.
  * Returns parsed rows on success. Throws ProviderError on failure.
  */
 export async function brightDataCollect<T = unknown>(opts: {
   providerId: string;
   datasetId: string;
   inputs: unknown;
+  discoverBy?: string;
   timeoutMs?: number;
-  type?: 'discover_new' | 'discover_url' | 'collect_data';
+  type?: 'discover_new' | 'discover_url' | 'collect_data' | 'url_collection';
 }): Promise<T[]> {
   const key = requireEnv('BRIGHTDATA_API_KEY');
   if (!key) throw new ProviderError('BRIGHTDATA_API_KEY not configured', opts.providerId);
 
-  const triggerUrl = `${BD_BASE}/trigger?dataset_id=${encodeURIComponent(opts.datasetId)}&include_errors=true&type=${opts.type ?? 'discover_new'}`;
+  const params = new URLSearchParams({
+    dataset_id: opts.datasetId,
+    include_errors: 'true',
+    type: opts.type ?? 'discover_new',
+  });
+  if (opts.discoverBy) params.set('discover_by', opts.discoverBy);
+  const triggerUrl = `${BD_BASE}/trigger?${params.toString()}`;
   const triggerRes = await fetchWithTimeout(triggerUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
@@ -43,7 +53,7 @@ export async function brightDataCollect<T = unknown>(opts: {
   if (!triggerRes) throw new ProviderError('Bright Data trigger network failure', opts.providerId, undefined, true);
   if (!triggerRes.ok) {
     const text = await triggerRes.text().catch(() => '');
-    throw new ProviderError(`Bright Data trigger ${triggerRes.status}: ${text.slice(0, 200)}`, opts.providerId, triggerRes.status, triggerRes.status >= 500);
+    throw new ProviderError(`Bright Data trigger ${triggerRes.status}: ${text.slice(0, 1500)}`, opts.providerId, triggerRes.status, triggerRes.status >= 500);
   }
   const trigger = (await triggerRes.json()) as TriggerOk;
   if (trigger.error) throw new ProviderError(`Bright Data: ${trigger.error}`, opts.providerId);

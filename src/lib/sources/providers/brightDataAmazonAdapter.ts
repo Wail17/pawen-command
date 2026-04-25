@@ -59,15 +59,17 @@ export class BrightDataAmazonAdapter implements EcomProvider {
     const maxProducts = Math.min(opts.maxProducts ?? 8, 20);
     const maxReviews = opts.maxReviewsPerProduct ?? 50;
 
-    // Step 1: search
-    const searchInputs = [{
-      url: `https://${domain}/s?k=${encodeURIComponent(query)}`,
-      num_of_products: maxProducts,
-    }];
+    // Bright Data Amazon SEARCH dataset only accepts url_collection — we
+    // pass an Amazon search URL directly and the dataset scrapes it.
+    // Amazon search dataset wants both `url` (the search page) AND `keyword`
+    // (used for parsing context). Both required, even though it's url_collection.
+    const searchUrl = `https://${domain}/s?k=${encodeURIComponent(query)}`;
+    const searchInputs = [{ url: searchUrl, keyword: query }];
     const searchRows = await brightDataCollect<AmazonSearchRow>({
       providerId: this.id,
       datasetId: searchId,
       inputs: searchInputs,
+      type: 'url_collection',
     });
 
     const products = searchRows
@@ -85,6 +87,7 @@ export class BrightDataAmazonAdapter implements EcomProvider {
           providerId: this.id,
           datasetId: reviewsId,
           inputs: rInputs,
+          discoverBy: 'product_url',
         });
         // Group by ASIN
         const byAsin = new Map<string, AmazonReviewRow[]>();
