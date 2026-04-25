@@ -58,7 +58,7 @@ export interface AgentMemoryEntry {
   id: string;
   agentId: AgentId;
   projectId: string | null;        // null = cross-project learning
-  type: 'learning' | 'opinion' | 'decision' | 'feedback' | 'error' | 'rejection';
+  type: 'learning' | 'opinion' | 'decision' | 'feedback' | 'error' | 'rejection' | 'team_decision' | 'user_directive';
   title: string;                   // "Pain-led hooks outperform desire-led for health niche"
   content: string;                 // detailed learning
   confidence: number;              // 1-10: how confident is the agent in this learning

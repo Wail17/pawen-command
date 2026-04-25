@@ -245,16 +245,32 @@ ${entries.map((e, i) => `${i + 1}. **${e.title}**: ${e.keyTakeaway}
 === END PRINCIPLES ===`;
 }
 
-// Build memory injection — separates errors/rejections from positive learnings
+// Build memory injection — separates errors/rejections, user directives,
+// team decisions, and positive learnings into distinct prompt blocks.
 export function buildMemoryPrompt(memories: { title: string; content: string; confidence: number; type?: string }[]): string {
   if (memories.length === 0) return '';
 
   const errors = memories.filter(m => m.type === 'error' || m.type === 'rejection');
-  const learnings = memories.filter(m => m.type !== 'error' && m.type !== 'rejection');
+  const teamDecisions = memories.filter(m => m.type === 'team_decision');
+  const userDirectives = memories.filter(m => m.type === 'user_directive');
+  const learnings = memories.filter(m =>
+    m.type !== 'error' && m.type !== 'rejection' && m.type !== 'team_decision' && m.type !== 'user_directive',
+  );
 
   let prompt = '';
 
-  // Errors and rejections get special treatment — NEVER REPEAT
+  // 1. User directives — HIGHEST priority. Explicit teaching from the human.
+  if (userDirectives.length > 0) {
+    prompt += `
+=== USER DIRECTIVES (the human told you to do this — comply unless DR principles forbid) ===
+${userDirectives.slice(0, 6).map((m, i) => `${i + 1}. ${m.title}
+   ${m.content.slice(0, 500)}`).join('\n\n')}
+=== END USER DIRECTIVES ===
+
+`;
+  }
+
+  // 2. Errors and rejections — NEVER REPEAT
   if (errors.length > 0) {
     prompt += `
 === CRITICAL: MISTAKES YOU MUST NEVER REPEAT ===
@@ -265,7 +281,18 @@ ${errors.map((e, i) => `${i + 1}. ${e.title}
 `;
   }
 
-  // Positive learnings
+  // 3. Team decisions — agreed in conversation, must be honored across the team
+  if (teamDecisions.length > 0) {
+    prompt += `
+=== TEAM DECISIONS (the team agreed to these — apply them) ===
+${teamDecisions.slice(0, 6).map((m, i) => `${i + 1}. ${m.title}
+   ${m.content.slice(0, 400)}`).join('\n\n')}
+=== END TEAM DECISIONS ===
+
+`;
+  }
+
+  // 4. Positive learnings
   if (learnings.length > 0) {
     prompt += `
 === YOUR EXPERIENCE (learnings from past projects) ===

@@ -19,6 +19,7 @@ import {
   getConstitutionRefreshEvery,
 } from './autonomousMode';
 import { bumpConstitutionCounter, updateAgentConstitution } from './constitution';
+import { triggerOnGateApproved, triggerOnGoldPick } from '../conversations/proactive';
 
 let idCounter = 0;
 function generateId(): string {
@@ -53,6 +54,14 @@ export async function captureFromPick(params: {
 
   // Update learning profile with pick signal
   await updateProfileFromPick(gateId, content);
+
+  // Phase V proactive — fire a Léa-led debrief about why this hit.
+  // Best-effort: never blocks the pick, never throws.
+  void triggerOnGoldPick({
+    project: { id: project.id, name: project.name, niche: project.niche, targetMarket: project.targetMarket },
+    sectionPath,
+    content,
+  }).catch(() => { /* silent */ });
 
   return entry;
 }
@@ -163,6 +172,16 @@ export async function captureFromApproval(params: {
     }
   } catch {
     /* never break the approval flow */
+  }
+
+  // Phase V proactive — Léa kicks off a debrief on high-scoring approvals
+  const score = gateOutput.reviewResult?.percentage ?? 0;
+  if (score >= 85) {
+    void triggerOnGateApproved({
+      project: { id: project.id, name: project.name, niche: project.niche, targetMarket: project.targetMarket },
+      gateId,
+      score,
+    }).catch(() => { /* silent */ });
   }
 
   return captured;

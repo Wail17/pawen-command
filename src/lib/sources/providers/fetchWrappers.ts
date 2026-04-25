@@ -12,18 +12,8 @@ import 'server-only';
 import type { RawSourceData, RawSourceItem, SourceDiscoveryPlan } from '../../avatars/types';
 import type { SocialResult, VideoResult, EcomResult } from './types';
 import { getSocialProvider, getVideoProvider, getEcomProvider, getScraperProvider, getSearchProvider } from './registry';
-import { recordHealth } from '../scrapingHealth';
-
-function trackHealth(source: string, providerId: string | null, result: RawSourceData): void {
-  void recordHealth({
-    source,
-    provider: providerId ?? undefined,
-    success: result.itemCount > 0 && !result.error,
-    latencyMs: result.fetchDurationMs,
-    items: result.itemCount,
-    errorMessage: result.error,
-  });
-}
+// Note: health tracking is done centrally in /api/scraping/fetch after
+// each wrapper returns. Keeps the wrappers pure.
 
 function toRaw(source: RawSourceItem['source'], r: { url: string; title?: string; content: string; comments?: Array<{ text: string }>; metadata?: Record<string, unknown> }): RawSourceItem {
   return {

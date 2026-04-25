@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Project } from '@/lib/types';
 import { getAllProjects, saveProject, deleteProject, restoreProject, restoreGateOutput } from '@/lib/store/db';
 import { createProject, getProgressPercentage, getCompletedGateCount, ALL_GATES } from '@/lib/store/project-utils';
@@ -37,6 +38,9 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const router = useRouter();
+  const hiveEnabled = process.env.NEXT_PUBLIC_HIVE_ENABLED === '1';
 
   // --- Auth state (all server-side; no localStorage for auth) ---
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -122,6 +126,19 @@ export default function Dashboard() {
           // for legacy pages (contribute, curate, tools). The server
           // is the authoritative identity source via the session cookie.
           try { localStorage.setItem('app-user', data.user.name); } catch {}
+          // Phase W: when the Hive flag is on, hop to /hive as the home
+          // page. Skip the redirect when the user explicitly went to /
+          // (e.g. via the back button from /hive) — sessionStorage flag.
+          if (hiveEnabled) {
+            const seenHive = (() => {
+              try { return sessionStorage.getItem('seen-hive') === '1'; } catch { return false; }
+            })();
+            if (!seenHive) {
+              try { sessionStorage.setItem('seen-hive', '1'); } catch {}
+              router.replace('/hive');
+              return;
+            }
+          }
           await loadProjects();
         } else {
           try { localStorage.removeItem('app-auth'); } catch {}

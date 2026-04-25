@@ -68,6 +68,13 @@ export function isNewScrapingStackEnabled(): boolean {
     || boolish(process.env.NEXT_PUBLIC_USE_NEW_SCRAPING_STACK);
 }
 
+// --- Phase W (Hive) flag ---
+// Default OFF. When OFF, /hive and /brand routes show a disabled banner
+// and the legacy single-user flow stays bit-identical.
+export function isHiveEnabled(): boolean {
+  return boolish(process.env.HIVE_ENABLED) || boolish(process.env.NEXT_PUBLIC_HIVE_ENABLED);
+}
+
 // --- Phase V flags ---
 
 // Client-readable. Master switch for the chat room.

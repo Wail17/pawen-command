@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "node scripts/deploy.mjs"
+    "deploy": "node scripts/deploy.mjs",
+    "test:providers": "tsx tests/providers/adapters.test.mjs && tsx tests/providers/qualityScore.test.mjs && tsx tests/providers/cache.test.mjs",
+    "test:e2e": "playwright test",
+    "test": "npm run test:providers"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

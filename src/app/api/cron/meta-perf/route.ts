@@ -17,6 +17,7 @@ import { fetchMetaCampaignInsights, detectDrop } from '@/lib/meta-ads/perfPull';
 import { isAutoRerunEnabled, isAutoConversationOnDropEnabled, isConversationsEnabled } from '@/lib/learning/autonomousMode';
 import { writeAudit } from '@/lib/auth/audit';
 import { startSystemConversation } from '@/lib/conversations/systemStart';
+import { runAutoStandup } from '@/lib/conversations/autoStandup';
 
 export const maxDuration = 300;
 
@@ -252,11 +253,16 @@ export async function GET(req: Request) {
     critical: perProjectSummary.filter(s => s.severity === 'critical').length,
   });
 
+  // Phase V piggyback: kick off a daily auto-standup on the most-stale
+  // active project. Conversations-enabled flag + 6h cooldown gate it.
+  const standup = await runAutoStandup('cron-meta').catch(() => null);
+
   return NextResponse.json({
     ok: true,
     ranAt: new Date().toISOString(),
     projects: projects.length,
     snapshots: perProjectSummary,
     autoRerun: boolEnv(process.env.AUTO_RERUN_ON_DROP),
+    autoStandup: standup,
   });
 }

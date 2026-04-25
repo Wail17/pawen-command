@@ -578,6 +578,8 @@ export default function ProjectPage() {
           <h2 className="text-lg font-bold text-text-primary mb-4">Tools & Modules</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
             {[
+              { href: `/project/${project.id}/agent-chat`, icon: '💬', name: 'Team chat', desc: 'Talk with the agents — they debate each other, Léa closes with a plan + the close becomes a team_decision in their memory' },
+              { href: `/project/${project.id}/agent-chat?action=standup`, icon: '🚀', name: 'Standup', desc: 'Léa kicks off a quick standup: each agent reports in one sentence on their area' },
               { href: `/project/${project.id}/import-context`, icon: '⚡', name: 'Import & skip to copy', desc: 'Already have your avatar/VOC/brand? Paste & jump straight to Gate 4' },
               { href: `/project/${project.id}/emails`, icon: '📧', name: 'Email Sequences', desc: '7 sequences, 28+ emails with A/B/C subjects' },
               { href: `/project/${project.id}/offer-stack`, icon: '💰', name: 'Offer Stack Builder', desc: 'Bonuses, guarantee, urgency, price anchoring' },

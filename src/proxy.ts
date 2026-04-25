@@ -50,7 +50,15 @@ import { getSessionFromRequest } from '@/lib/auth/session';
 // When true, every incoming request returns 503 before any other logic runs.
 // Used to take the tool offline for QA / Ralph loop iterations without
 // deleting the deployment. Flip to `false` and redeploy to restore service.
-const KILL_SWITCH = true;
+// Kill switch: ON in production, OFF in local dev. Override either way
+// with the KILL_SWITCH env var ('1'/'0'). Admin tooling + cron bypass it
+// regardless via isKillSwitchBypassRequest() below.
+const KILL_SWITCH = (() => {
+  const v = (process.env.KILL_SWITCH ?? '').toLowerCase();
+  if (v === '1' || v === 'true') return true;
+  if (v === '0' || v === 'false') return false;
+  return process.env.NODE_ENV === 'production';
+})();
 
 function killSwitchResponse(): NextResponse {
   return new NextResponse(

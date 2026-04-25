@@ -39,7 +39,7 @@ interface YTVideoStats {
 
 export class YouTubeDataAPIAdapter implements VideoProvider {
   id = 'youtube-data-api';
-  priority = 1;
+  priority = 2; // fallback after BrightDataYouTubeAdapter
   supports: VideoFetchOptions['platform'][] = ['youtube'];
 
   async fetch(query: string, opts: VideoFetchOptions): Promise<VideoResult[]> {

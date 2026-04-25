@@ -12,10 +12,11 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AGENT_PERSONAS } from '@/lib/agents/personas';
 import type { AgentId, Conversation, ConversationMessage } from '@/lib/kb/types';
+import { captureTeamDecision } from '@/lib/conversations/decisionCapture';
 
 const AGENT_BG: Record<string, string> = {
   sarah:  'bg-blue-500/10 border-blue-500/30',
@@ -51,9 +52,12 @@ interface ApiResponse {
 
 export default function AgentChatPage() {
   const routeParams = useParams<{ id: string }>();
+  const search = useSearchParams();
   const projectId = routeParams.id;
+  const wantsStandup = search.get('action') === 'standup';
 
   const [enabled] = useState(process.env.NEXT_PUBLIC_CONVERSATIONS_ENABLED === '1');
+  const [autoStartedStandup, setAutoStartedStandup] = useState(false);
   const [projectConvs, setProjectConvs] = useState<Conversation[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
@@ -97,6 +101,33 @@ export default function AgentChatPage() {
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  // Auto-fire a standup when the page loads with ?action=standup
+  useEffect(() => {
+    if (!wantsStandup || autoStartedStandup || !enabled) return;
+    setAutoStartedStandup(true);
+    (async () => {
+      const res = await fetch('/api/conversations/system-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          projectId,
+          trigger: 'STANDUP',
+          topic: `Standup`,
+          opening: `Team — quick standup. Where are we, what's blocking, what's the next concrete move? Each agent: ONE sentence on your area. I'll close with the priority list.`,
+          maxChainLength: 4,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { ok: boolean; conversationId?: string };
+        if (data.conversationId) {
+          await loadConv(data.conversationId);
+          await loadList();
+        }
+      }
+    })();
+  }, [wantsStandup, autoStartedStandup, enabled, projectId, loadConv, loadList]);
 
   useEffect(() => {
     // Auto-scroll to bottom when messages change
@@ -180,6 +211,17 @@ export default function AgentChatPage() {
         setActiveConv(data.conversation);
         await loadConv(data.conversation.id);
         void loadList();
+        // Persist Léa's summary as a team_decision memory for every agent
+        // that participated. From here onwards, any gate or future
+        // conversation those agents touch will see this as a team decision.
+        try {
+          const captured = await captureTeamDecision(data.conversation, data.conversation.summary);
+          if (captured.length > 0) {
+            console.log(`[chat] team decision captured for ${captured.length} agents`);
+          }
+        } catch (e) {
+          console.warn('[chat] team decision capture failed', e);
+        }
       }
     } finally {
       setPosting(false);

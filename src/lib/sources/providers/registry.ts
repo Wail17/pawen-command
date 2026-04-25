@@ -15,11 +15,14 @@ import type {
 import { ExaAdapter } from './exaAdapter';
 import { BraveAdapter } from './braveAdapter';
 import { FirecrawlAdapter } from './firecrawlAdapter';
-import { BrightDataAdapter } from './brightDataAdapter';
+import { BrightDataRedditAdapter } from './brightDataRedditAdapter';
+import { BrightDataQuoraAdapter } from './brightDataQuoraAdapter';
+import { BrightDataTikTokAdapter } from './brightDataTikTokAdapter';
+import { BrightDataYouTubeAdapter } from './brightDataYouTubeAdapter';
+import { BrightDataInstagramAdapter } from './brightDataInstagramAdapter';
+import { BrightDataAmazonAdapter } from './brightDataAmazonAdapter';
 import { RedditOAuthAdapter } from './redditOAuthAdapter';
-import { TikApiAdapter } from './tikApiAdapter';
 import { YouTubeDataAPIAdapter } from './youtubeDataAPIAdapter';
-import { RainforestAdapter } from './rainforestAdapter';
 import { ShopifyPublicAdapter } from './shopifyPublicAdapter';
 import { metaGraphAdapter } from './metaGraphAdapter';
 import { VoyageEmbeddingAdapter, SimhashEmbeddingAdapter } from './voyageEmbeddingAdapter';
@@ -28,9 +31,11 @@ import { VoyageEmbeddingAdapter, SimhashEmbeddingAdapter } from './voyageEmbeddi
 
 const SEARCH: SearchProvider[] = [new ExaAdapter(), new BraveAdapter()];
 const SCRAPER: ScraperProvider[] = [new FirecrawlAdapter()];
-const SOCIAL: SocialProvider[] = [new BrightDataAdapter(), new RedditOAuthAdapter()];
-const VIDEO: VideoProvider[] = [new TikApiAdapter(), new YouTubeDataAPIAdapter()];
-const ECOM: EcomProvider[] = [new RainforestAdapter(), new ShopifyPublicAdapter()];
+// All social via Bright Data; RedditOAuth retained as a free fallback.
+const SOCIAL: SocialProvider[] = [new BrightDataRedditAdapter(), new BrightDataQuoraAdapter(), new RedditOAuthAdapter()];
+// All video via Bright Data; YouTube Data API retained as fallback.
+const VIDEO: VideoProvider[] = [new BrightDataTikTokAdapter(), new BrightDataYouTubeAdapter(), new BrightDataInstagramAdapter(), new YouTubeDataAPIAdapter()];
+const ECOM: EcomProvider[] = [new BrightDataAmazonAdapter(), new ShopifyPublicAdapter()];
 const META_ADS: MetaAdsProvider[] = [metaGraphAdapter];
 const EMBEDDING: EmbeddingProvider[] = [new VoyageEmbeddingAdapter(), new SimhashEmbeddingAdapter()];
 
