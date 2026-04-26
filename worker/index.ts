@@ -44,6 +44,7 @@
 // ============================================================
 
 import { connect } from 'inngest/connect';
+import type { Inngest } from 'inngest';
 import { inngest } from '../src/lib/inngest/client';
 import { avatarExcavationFn } from '../src/lib/inngest/functions/avatarExcavation';
 import { zombieReaperFn } from '../src/lib/inngest/functions/zombieReaper';
@@ -58,14 +59,18 @@ console.log(`[worker] functions: avatar-excavation, zombie-reaper`);
 const connection = await connect({
   apps: [
     {
-      client: inngest,
+      // inngest is typed narrowly via its const id ("pawen-command-center");
+      // the connect() signature wants the broader Inngest.Any to remain
+      // generic across multi-app workers. Cast is safe — runtime contract
+      // is identical.
+      client: inngest as unknown as Inngest.Any,
       functions: [avatarExcavationFn, zombieReaperFn],
     },
   ],
   instanceId: INSTANCE_ID,
   // 4 concurrent step executions per worker — matches the avatar function's
   // own concurrency: { limit: 3 } setting plus headroom for the cron reaper.
-  maxConcurrency: 4,
+  maxWorkerConcurrency: 4,
 });
 
 console.log(`[worker] connected to Inngest cloud`);

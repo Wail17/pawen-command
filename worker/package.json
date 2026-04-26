@@ -6,6 +6,7 @@
   "description": "Long-running Inngest worker for Pawen avatar excavation pipeline. Hosted on Railway (no Vercel timeout caps).",
   "scripts": {
     "start": "tsx index.ts",
+    "start:local": "tsx --env-file=.env index.ts",
     "build": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,7 +15,7 @@
     "@vercel/blob": "^2.3.3",
     "inngest": "^4.2.4",
     "jsonrepair": "^3.13.3",
-    "server-only": "^0.0.1",
+    "server-only": "file:./stubs/server-only",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
