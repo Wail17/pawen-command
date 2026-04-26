@@ -1610,14 +1610,28 @@ HARD LIMITS:
     let rawCompileText = '';
     let compileTier: 'full' | 'two-pass' | 'minimal' = 'full';
 
-    // Layer A: full single-shot
-    try {
-      const fullResult = await tryFullCompile(core, analysesText, acc, systemPrefix, onProgress);
-      compileParsed = fullResult.parsed;
-      rawCompileText = fullResult.rawText;
-    } catch (e) {
+    // Layer A: full single-shot (skippable via env when we're racing the
+    // Vercel function-duration cap). The single-shot makes a 32k-token
+    // Sonnet call against the full context — on rich niches it routinely
+    // takes 4-7 min and can hit /api/generate's 780s AbortSignal. The
+    // two-pass cascade (Layer B) is faster (3-5 min predictable) and
+    // produces the same shape because it parallelises angles per
+    // sub-avatar. Set FORCE_TWO_PASS_COMPILE=1 to skip Layer A.
+    const forceTwoPass = process.env.FORCE_TWO_PASS_COMPILE === '1'
+      || process.env.NEXT_PUBLIC_FORCE_TWO_PASS_COMPILE === '1';
+    if (!forceTwoPass) {
+      try {
+        const fullResult = await tryFullCompile(core, analysesText, acc, systemPrefix, onProgress);
+        compileParsed = fullResult.parsed;
+        rawCompileText = fullResult.rawText;
+      } catch (e) {
+        if (typeof window !== 'undefined') {
+          console.warn('[compile] Layer A (full) threw:', e);
+        }
+      }
+    } else {
       if (typeof window !== 'undefined') {
-        console.warn('[compile] Layer A (full) threw:', e);
+        console.log('[compile] Layer A skipped via FORCE_TWO_PASS_COMPILE — going straight to Layer B');
       }
     }
 
