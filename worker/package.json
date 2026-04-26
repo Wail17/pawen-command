@@ -1,0 +1,24 @@
+{
+  "name": "pawen-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Long-running Inngest worker for Pawen avatar excavation pipeline. Hosted on Railway (no Vercel timeout caps).",
+  "scripts": {
+    "start": "tsx index.ts",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@neondatabase/serverless": "^1.0.2",
+    "@vercel/blob": "^2.3.3",
+    "inngest": "^4.2.4",
+    "jsonrepair": "^3.13.3",
+    "server-only": "^0.0.1",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

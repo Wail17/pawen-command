@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../src/*"]
+    }
+  },
+  "include": [
+    "index.ts",
+    "../src/lib/inngest/**/*.ts",
+    "../src/lib/avatars/**/*.ts",
+    "../src/lib/sources/**/*.ts",
+    "../src/lib/db/**/*.ts",
+    "../src/lib/util/**/*.ts",
+    "../src/lib/blob/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}
