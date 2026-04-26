@@ -53,8 +53,11 @@ export const DEFAULT_SOURCE_CONFIG: SourceConfig = {
   reviews: true,
   searchWide: true,
   shopify: true,
-  instagram: true,
-  facebook: true,
+  // Apify path retired 2026-04-26 — Bright Data has no keyword/hashtag
+  // discovery for IG (only profile-URL ingestion) and FB has no BD
+  // dataset at all. Both default OFF until we wire a non-Apify path.
+  instagram: false,
+  facebook: false,
 };
 
 export const SOURCE_LABELS: Record<SourceType, string> = {

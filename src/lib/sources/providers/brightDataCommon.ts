@@ -11,7 +11,7 @@ import { fetchWithTimeout, missingEnvHealth, nowIso, requireEnv } from './common
 
 const BD_BASE = 'https://api.brightdata.com/datasets/v3';
 const POLL_INTERVAL_MS = 4_000;
-const POLL_TIMEOUT_MS  = 270_000;   // up to 4.5 min — BD datasets are slow on cold start
+const POLL_TIMEOUT_MS  = 600_000;   // 10 min — BD datasets pile up jobs server-side; data is ready, we just need to keep polling. Caller can override per-call.
 
 interface TriggerOk {
   snapshot_id?: string;

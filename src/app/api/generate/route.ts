@@ -13,10 +13,10 @@ import {
 } from '@/lib/ai/advisor';
 import { requireSession } from '@/lib/auth/session';
 
-// Hobby plan caps maxDuration at 300s. Upgrade to Pro to bump this higher
-// (Fluid Compute allows up to 800s) — needed for 32k-token Opus calls under
-// tier-1 throughput (8k OTPM).
-export const maxDuration = 300;
+// Pro plan with Fluid Compute = 800s. Compile (Opus) on rich niches with
+// dense context can run 6-9 min. 300s was killing the analyze-and-compile
+// Inngest step at the LLM call level. Bumped to 800.
+export const maxDuration = 800;
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(295_000),
+        signal: AbortSignal.timeout(780_000), // 13 min — under the 800s function cap with margin to surface a clean error
       });
       lastResp = resp;
       if (resp.ok) return resp;

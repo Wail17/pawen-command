@@ -116,7 +116,7 @@ export class BrightDataTikTokAdapter implements VideoProvider {
           datasetId: commentsId,
           inputs,
           type: 'url_collection',
-          timeoutMs: 90_000,
+          timeoutMs: 600_000,
         });
         const estCost = (commentRows.length / 1000) * 1.5;
         console.log(`[brightdata-tiktok] comments: ${commentRows.length} rows for ${top.length} videos (~$${estCost.toFixed(3)} BD cost)`);
