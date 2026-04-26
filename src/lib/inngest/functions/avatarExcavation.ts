@@ -24,6 +24,7 @@ import { withInternalContext } from '@/lib/util/internalContext';
 import { ensureFetchPatched } from '@/lib/util/fetchPatch';
 import { markPhase, markCompleted, markFailed } from '../jobUpdate';
 import { wrapStepOutput, unwrapStepOutput, type StepOutputHandle } from '@/lib/blob/excavationBlob';
+import { getCachedFetch, buildCacheKey } from '@/lib/avatars/excavationCache';
 import type {
   CoreAvatarInput,
   SourceConfig,
@@ -42,6 +43,11 @@ interface ExcavationEventData {
   config?: SourceConfig;
   redditDepth?: RedditDepth;
   reverseSeeds?: ReverseEngineeredFunnel | null;
+  // Replay path: if set, step 2 'discover-and-fetch' is skipped entirely
+  // and this data is used as fetchHandle directly. Used by the
+  // test-pipeline-from-cache.mjs script to validate Phase 2.5+ without
+  // re-burning BD credit.
+  __replayPrefetchedData?: Partial<Record<SourceType, RawSourceData>>;
 }
 
 export const avatarExcavationFn = inngest.createFunction(
@@ -72,8 +78,34 @@ export const avatarExcavationFn = inngest.createFunction(
     // Raw Signal builder → Voyage Dedup → Voyage Rerank.
     // The slow piece is BD fetch (Reddit posts+comments up to 540s).
     // Heavy fetchData blob may push >1MB → Vercel Blob.
+    //
+    // SHORT-CIRCUIT PATHS (no BD spend):
+    //   1. Replay (event.data.__replayPrefetchedData set) — used by
+    //      test-pipeline-from-cache.mjs.
+    //   2. excavation_fetch_cache hit — auto when same inputs run
+    //      twice within the 6h TTL.
     // ────────────────────────────────────────────────────────────────
     const fetchHandle = await step.run('discover-and-fetch', async (): Promise<StepOutputHandle<Partial<Record<SourceType, RawSourceData>>>> => {
+      // Short-circuit 1: explicit replay payload from a debug script.
+      if (data.__replayPrefetchedData) {
+        const totalItems = Object.values(data.__replayPrefetchedData)
+          .reduce((sum, b) => sum + (b?.itemCount ?? b?.items?.length ?? 0), 0);
+        await markPhase(jobId, 'fetching', `Replay path: reusing ${totalItems} pre-fetched items (no BD calls)`);
+        return await wrapStepOutput(jobId, 'discover-and-fetch', data.__replayPrefetchedData);
+      }
+
+      // Short-circuit 2: auto cache hit on same inputs within TTL.
+      const cacheKey = await buildCacheKey({ core, config, redditDepth });
+      const cached = await getCachedFetch(cacheKey);
+      if (cached?.data) {
+        const totalItems = Object.values(cached.data)
+          .reduce((sum, b) => sum + (b?.itemCount ?? b?.items?.length ?? 0), 0);
+        await markPhase(jobId, 'fetching', `Cache hit: ${totalItems} items from previous run (skipping BD scrape)`);
+        logger.info(`[avatar-excavation:${jobId}] cache hit (${totalItems} items)`);
+        return await wrapStepOutput(jobId, 'discover-and-fetch', cached.data);
+      }
+
+      // Cache miss → real fetch.
       ensureFetchPatched();
       return await withInternalContext({ baseUrl, sessionCookie }, async () => {
         await markPhase(jobId, 'discovery', 'Phase 1: Marcus is planning the hunt (KB + discovery LLM)');
@@ -86,9 +118,6 @@ export const avatarExcavationFn = inngest.createFunction(
           redditDepth,
           reverseSeeds: reverseSeeds ?? null,
           stopAfterFetch: true,
-          // onProgress writes markPhase already via the runAvatarExcavation
-          // internal hooks; for steps that don't carry an onProgress we
-          // emit explicit markPhase calls at step boundaries.
           onProgress: async (e) => {
             await markPhase(jobId, e.phase, e.message);
           },
