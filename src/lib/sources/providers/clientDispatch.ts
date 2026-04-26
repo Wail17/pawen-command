@@ -24,43 +24,60 @@ export async function fetchViaNewStack(
   language: string,
 ): Promise<RawSourceData> {
   const start = Date.now();
-  try {
-    const res = await fetch(apiUrl('/api/scraping/fetch'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source, plan, language }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      return {
-        source,
-        queries: [],
-        items: [],
-        itemCount: 0,
-        fetchDurationMs: Date.now() - start,
-        error: `new-stack ${source}: HTTP ${res.status} ${text.slice(0, 200)}`,
-      };
+  // Reddit posts (270s BD poll) + comments (270s BD poll) can run up to
+  // 540s; Amazon search + reviews similar. Vercel function-to-function
+  // calls drop occasionally with `TypeError: fetch failed` (network blip
+  // / cold start collision) — observed on Reddit/TikTok/YouTube which
+  // sit at the long end. Retry the POST 3× with exponential backoff
+  // before giving up. AbortSignal kept generous so a successful slow
+  // poll isn't cut short.
+  const MAX_ATTEMPTS = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(apiUrl('/api/scraping/fetch'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, plan, language }),
+        signal: AbortSignal.timeout(780_000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        return {
+          source,
+          queries: [],
+          items: [],
+          itemCount: 0,
+          fetchDurationMs: Date.now() - start,
+          error: `new-stack ${source}: HTTP ${res.status} ${text.slice(0, 200)}`,
+        };
+      }
+      const data = await res.json() as { ok: boolean; data?: RawSourceData; message?: string };
+      if (!data.ok || !data.data) {
+        return {
+          source,
+          queries: [],
+          items: [],
+          itemCount: 0,
+          fetchDurationMs: Date.now() - start,
+          error: `new-stack ${source}: ${data.message ?? 'unknown error'}`,
+        };
+      }
+      return data.data;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < MAX_ATTEMPTS) {
+        const backoffMs = 1500 * 2 ** (attempt - 1);
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
     }
-    const data = await res.json() as { ok: boolean; data?: RawSourceData; message?: string };
-    if (!data.ok || !data.data) {
-      return {
-        source,
-        queries: [],
-        items: [],
-        itemCount: 0,
-        fetchDurationMs: Date.now() - start,
-        error: `new-stack ${source}: ${data.message ?? 'unknown error'}`,
-      };
-    }
-    return data.data;
-  } catch (e) {
-    return {
-      source,
-      queries: [],
-      items: [],
-      itemCount: 0,
-      fetchDurationMs: Date.now() - start,
-      error: e instanceof Error ? e.message : String(e),
-    };
   }
+  return {
+    source,
+    queries: [],
+    items: [],
+    itemCount: 0,
+    fetchDurationMs: Date.now() - start,
+    error: lastErr instanceof Error ? `${lastErr.message} (after ${MAX_ATTEMPTS} attempts)` : String(lastErr),
+  };
 }
