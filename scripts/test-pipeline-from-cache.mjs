@@ -99,6 +99,24 @@ if (!eventKey) {
   process.exit(1);
 }
 
+// Sign a session cookie locally so the Inngest function's internal
+// /api/* calls (dedup, rerank, /api/generate) pass requireSession.
+function base64url(buf) {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function signSession(user, role) {
+  const secret = env.SESSION_SECRET;
+  if (!secret || secret.length < 32) throw new Error('SESSION_SECRET missing/too short in .env.local');
+  const now = Date.now();
+  const payload = { user, role, iat: now, exp: now + 24 * 3600 * 1000 };
+  const payloadBuf = Buffer.from(JSON.stringify(payload), 'utf8');
+  const hmac = crypto.createHmac('sha256', Buffer.from(secret, 'utf8')).update(payloadBuf).digest();
+  return `${base64url(payloadBuf)}.${base64url(hmac)}`;
+}
+const sessionToken = signSession(job.owner, 'admin');
+const sessionCookieHeader = `pawen-session=${sessionToken}`;
+console.log(`→ signed session for owner=${job.owner} (admin role)`);
+
 const newJobId = `job_${crypto.randomUUID()}`;
 console.log(`\n→ creating fresh job ${newJobId} for the replay`);
 await sql`
@@ -122,19 +140,21 @@ console.log(`→ sending Inngest event with prefetchedData inlined (skips Phase 
 // API calls. The cleanest way is to POST to the Inngest webhook directly.
 // Inngest accepts events via /e/<event_key>.
 const webhook = `https://inn.gs/e/${eventKey}`;
+// Don't inline prefetchedData — Inngest events cap at 256KB and our
+// cache blob is multi-MB. Instead rely on the Inngest function's
+// auto cache-hit path: step 2 calls buildCacheKey → getCachedFetch
+// and short-circuits when a fresh row exists. We just hydrated that
+// row, so the next event with the same inputs will hit it.
 const eventBody = {
   name: 'avatar/excavation.start',
   data: {
     jobId: newJobId,
     baseUrl: 'https://pawen-command-center.vercel.app',
-    sessionCookie: '', // Stage 2 doesn't make internal calls that need session
+    sessionCookie: sessionCookieHeader,
     core,
     config: payload.config,
     redditDepth: payload.redditDepth,
     reverseSeeds: payload.reverseSeeds ?? null,
-    // SPECIAL FLAG: Inngest function reads this and skips step 2 'discover-and-fetch',
-    // jumping straight to step 3 'analyze-and-compile' with this data.
-    __replayPrefetchedData: cache.data,
   },
 };
 

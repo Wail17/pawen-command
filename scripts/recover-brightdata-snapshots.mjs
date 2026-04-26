@@ -75,26 +75,10 @@ async function bdFetch(path) {
 }
 
 async function listReadySnapshots() {
-  // BD endpoint: GET /snapshots?status=ready&from_date=...&to_date=...
-  // Returns up to ~1000 snapshots per call. We page if needed.
-  const all = [];
-  let page = 1;
-  for (;;) {
-    const url = `/snapshots?status=ready&page=${page}&size=1000`;
-    let batch;
-    try {
-      batch = await bdFetch(url);
-    } catch (e) {
-      console.warn(`  page ${page}: ${e.message}`);
-      break;
-    }
-    const list = Array.isArray(batch) ? batch : (batch?.snapshots ?? []);
-    if (list.length === 0) break;
-    all.push(...list);
-    if (list.length < 1000) break;
-    page++;
-  }
-  return all;
+  // BD endpoint accepts only `status` + optional `from_date`/`to_date`.
+  // Returns the full array (no pagination params allowed).
+  const batch = await bdFetch(`/snapshots?status=ready`);
+  return Array.isArray(batch) ? batch : (batch?.snapshots ?? []);
 }
 
 async function downloadSnapshot(snapshotId) {

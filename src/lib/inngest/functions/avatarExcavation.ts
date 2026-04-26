@@ -23,6 +23,27 @@ import { runAvatarExcavation } from '@/lib/avatars/runAvatarExcavation';
 import { withInternalContext } from '@/lib/util/internalContext';
 import { ensureFetchPatched } from '@/lib/util/fetchPatch';
 import { markPhase, markCompleted, markFailed } from '../jobUpdate';
+import { getSql } from '@/lib/db/client';
+
+/**
+ * Wraps a long-running step.run body with a 30s-interval heartbeat
+ * ticker that bumps pipeline_jobs.heartbeat_at independently of the
+ * runAvatarExcavation onProgress events. Without this, a single
+ * 6-min Sonnet compile call leaves the job looking stale to the
+ * zombie reaper and the polling UI even though it's making progress.
+ */
+async function withHeartbeat<T>(jobId: string, fn: () => Promise<T>): Promise<T> {
+  const sql = getSql();
+  const ticker = setInterval(() => {
+    void sql`UPDATE pipeline_jobs SET heartbeat_at = NOW() WHERE id = ${jobId}`.catch(() => {});
+  }, 30_000);
+  if (typeof ticker.unref === 'function') ticker.unref();
+  try {
+    return await fn();
+  } finally {
+    clearInterval(ticker);
+  }
+}
 import { wrapStepOutput, unwrapStepOutput, type StepOutputHandle } from '@/lib/blob/excavationBlob';
 import { getCachedFetch, buildCacheKey } from '@/lib/avatars/excavationCache';
 import type {
@@ -85,7 +106,7 @@ export const avatarExcavationFn = inngest.createFunction(
     //   2. excavation_fetch_cache hit — auto when same inputs run
     //      twice within the 6h TTL.
     // ────────────────────────────────────────────────────────────────
-    const fetchHandle = await step.run('discover-and-fetch', async (): Promise<StepOutputHandle<Partial<Record<SourceType, RawSourceData>>>> => {
+    const fetchHandle = await step.run('discover-and-fetch', async (): Promise<StepOutputHandle<Partial<Record<SourceType, RawSourceData>>>> => withHeartbeat(jobId, async () => {
       // Short-circuit 1: explicit replay payload from a debug script.
       if (data.__replayPrefetchedData) {
         const totalItems = Object.values(data.__replayPrefetchedData)
@@ -134,7 +155,7 @@ export const avatarExcavationFn = inngest.createFunction(
         }
         return await wrapStepOutput(jobId, 'discover-and-fetch', fetchData);
       });
-    });
+    }));
 
     logger.info(`[avatar-excavation:${jobId}] step 2 done — fetch handle:`, fetchHandle.kind);
 
@@ -146,7 +167,7 @@ export const avatarExcavationFn = inngest.createFunction(
     // Opus compile, adversarial (skipped via env), classifier.
     // ~3-5 min typical; gets its own fresh 800s budget.
     // ────────────────────────────────────────────────────────────────
-    const finalResult = await step.run('analyze-and-compile', async () => {
+    const finalResult = await step.run('analyze-and-compile', async () => withHeartbeat(jobId, async () => {
       ensureFetchPatched();
       return await withInternalContext({ baseUrl, sessionCookie }, async () => {
         await markPhase(jobId, 'analyzing', 'Phase 3: launching parallel source analyzers');
@@ -170,7 +191,7 @@ export const avatarExcavationFn = inngest.createFunction(
           totalTokens: result.totalTokens,
         };
       });
-    });
+    }));
 
     // ────────────────────────────────────────────────────────────────
     // STEP 4 — FINALIZE: persist final result on the job row.
