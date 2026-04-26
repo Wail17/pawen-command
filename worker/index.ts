@@ -43,6 +43,9 @@
 //                            a real user cookie).
 // ============================================================
 
+// Force verbose Inngest SDK logging before importing anything that uses it.
+process.env.INNGEST_LOG_LEVEL = process.env.INNGEST_LOG_LEVEL ?? 'debug';
+
 import { connect } from 'inngest/connect';
 import type { Inngest } from 'inngest';
 import { inngest } from '../src/lib/inngest/client';
@@ -53,25 +56,39 @@ const INSTANCE_ID = process.env.INSTANCE_ID
   ?? process.env.RAILWAY_REPLICA_ID
   ?? `pawen-worker-${Math.random().toString(36).slice(2, 10)}`;
 
+// Diagnostic: confirm critical env at boot (mask secrets).
+const mask = (v: string | undefined) => (v ? `${v.slice(0, 12)}…(${v.length}c)` : 'MISSING');
 console.log(`[worker] starting Inngest connect — instance=${INSTANCE_ID}`);
 console.log(`[worker] functions: avatar-excavation, zombie-reaper`);
+console.log(`[worker] env check:`);
+console.log(`  INNGEST_EVENT_KEY    = ${mask(process.env.INNGEST_EVENT_KEY)}`);
+console.log(`  INNGEST_SIGNING_KEY  = ${mask(process.env.INNGEST_SIGNING_KEY)}`);
+console.log(`  INNGEST_BASE_URL     = ${process.env.INNGEST_BASE_URL ?? '(default)'}`);
+console.log(`  INNGEST_DEV          = ${process.env.INNGEST_DEV ?? '(unset)'}`);
+console.log(`  INNGEST_LOG_LEVEL    = ${process.env.INNGEST_LOG_LEVEL}`);
+console.log(`  app id               = ${(inngest as unknown as { id?: string }).id ?? '(unknown)'}`);
 
-const connection = await connect({
-  apps: [
-    {
-      // inngest is typed narrowly via its const id ("pawen-command-center");
-      // the connect() signature wants the broader Inngest.Any to remain
-      // generic across multi-app workers. Cast is safe — runtime contract
-      // is identical.
-      client: inngest as unknown as Inngest.Any,
-      functions: [avatarExcavationFn, zombieReaperFn],
-    },
-  ],
-  instanceId: INSTANCE_ID,
-  // 4 concurrent step executions per worker — matches the avatar function's
-  // own concurrency: { limit: 3 } setting plus headroom for the cron reaper.
-  maxWorkerConcurrency: 4,
-});
+let connection;
+try {
+  connection = await connect({
+    apps: [
+      {
+        client: inngest as unknown as Inngest.Any,
+        functions: [avatarExcavationFn, zombieReaperFn],
+      },
+    ],
+    instanceId: INSTANCE_ID,
+    maxWorkerConcurrency: 4,
+  });
+} catch (err) {
+  console.error(`[worker] connect() threw at boot:`, err);
+  if (err instanceof Error) {
+    console.error(`  name:    ${err.name}`);
+    console.error(`  message: ${err.message}`);
+    console.error(`  stack:   ${err.stack}`);
+  }
+  process.exit(1);
+}
 
 console.log(`[worker] connected to Inngest cloud`);
 
