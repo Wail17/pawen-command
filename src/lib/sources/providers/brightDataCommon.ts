@@ -34,8 +34,17 @@ export async function brightDataCollect<T = unknown>(opts: {
   timeoutMs?: number;
   type?: 'discover_new' | 'discover_url' | 'collect_data' | 'url_collection';
 }): Promise<T[]> {
+  // Master kill switch — set BRIGHTDATA_KILL_SWITCH=1 to stop ALL BD spend.
+  if (process.env.BRIGHTDATA_KILL_SWITCH === '1') {
+    throw new ProviderError('Bright Data calls disabled by BRIGHTDATA_KILL_SWITCH', opts.providerId);
+  }
   const key = requireEnv('BRIGHTDATA_API_KEY');
   if (!key) throw new ProviderError('BRIGHTDATA_API_KEY not configured', opts.providerId);
+  // Cap inputs at 20 hard — defensive bound across every adapter
+  const inputArr = Array.isArray(opts.inputs) ? opts.inputs : [opts.inputs];
+  if (inputArr.length > 20) {
+    throw new ProviderError(`Bright Data: too many inputs (${inputArr.length} > 20 hard cap)`, opts.providerId);
+  }
 
   const params = new URLSearchParams({
     dataset_id: opts.datasetId,
@@ -81,7 +90,16 @@ export async function brightDataCollect<T = unknown>(opts: {
       throw new ProviderError(`Bright Data snapshot ${res.status}: ${text.slice(0, 200)}`, opts.providerId, res.status);
     }
     const data = await res.json();
-    return Array.isArray(data) ? (data as T[]) : [];
+    const rows = Array.isArray(data) ? (data as T[]) : [];
+    // Surface cost on every call — $1.50/1000 records is the catalog price.
+    if (rows.length > 0) {
+      const estCost = (rows.length / 1000) * 1.5;
+      console.log(`[${opts.providerId}] BD snapshot ${snapshotId}: ${rows.length} records (~$${estCost.toFixed(3)})`);
+      if (rows.length > 10_000) {
+        console.error(`[${opts.providerId}] CRITICAL: ${rows.length} records returned — this snapshot cost ~$${estCost.toFixed(2)}`);
+      }
+    }
+    return rows;
   }
   throw new ProviderError(`Bright Data snapshot timeout (${POLL_TIMEOUT_MS}ms)`, opts.providerId, 504, true);
 }

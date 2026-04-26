@@ -7,12 +7,11 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { after } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { requireSession } from '@/lib/auth/session';
 import { writeAudit } from '@/lib/auth/audit';
 import { createJob } from '@/lib/jobs/db';
-import { runAvatarJob } from '@/lib/jobs/avatarWorker';
+import { inngest, EVENTS } from '@/lib/inngest/client';
 import type { CoreAvatarInput, SourceConfig } from '@/lib/avatars/types';
 import type { RedditDepth } from '@/lib/sources/reddit';
 import type { ReverseEngineeredFunnel } from '@/lib/competitor/types';
@@ -23,7 +22,10 @@ import type { ReverseEngineeredFunnel } from '@/lib/competitor/types';
 // excavation can take 8-12 min and will hit the cap — the stale-job
 // watchdog (reapStaleJob) auto-fails them after 5 min of silence so the
 // UI gets a clear error instead of polling forever.
-export const maxDuration = 300;
+// 800s = Vercel Pro plan ceiling. The avatar pipeline is sequential
+// (Reddit ~120s + Amazon ~290s + analyzers ~60s + compile ~90s +
+// classifier+adversarial ~90s ≈ 650s). 300s default kills it mid-flight.
+export const maxDuration = 800;
 
 interface StartBody {
   projectId: string;
@@ -94,23 +96,21 @@ export async function POST(req: NextRequest) {
     niche: body.core.niche,
   });
 
-  // Fire the worker AFTER the response is sent. `after()` keeps the function
-  // alive for the configured maxDuration, so the run keeps going even though
-  // the user already got their { jobId } back.
-  after(async () => {
-    try {
-      await runAvatarJob({
-        jobId,
-        baseUrl,
-        sessionCookie: sessionCookieHeader,
-        core: body.core,
-        config: body.config,
-        redditDepth: body.redditDepth,
-        reverseSeeds: body.reverseSeeds ?? null,
-      });
-    } catch (err) {
-      console.error(`[avatars/start] worker for ${jobId} crashed:`, err);
-    }
+  // Dispatch the run via Inngest. Each pipeline phase (fetch, analyze,
+  // compile) runs as its own step.run() inside the Inngest function and
+  // gets a fresh Vercel function-duration budget — sidesteps the 800s
+  // single-function cap that broke the previous after()-based worker.
+  await inngest.send({
+    name: EVENTS.AVATAR_EXCAVATION_START,
+    data: {
+      jobId,
+      baseUrl,
+      sessionCookie: sessionCookieHeader,
+      core: body.core,
+      config: body.config,
+      redditDepth: body.redditDepth,
+      reverseSeeds: body.reverseSeeds ?? null,
+    },
   });
 
   return NextResponse.json({ ok: true, jobId });

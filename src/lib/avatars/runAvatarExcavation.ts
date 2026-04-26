@@ -19,6 +19,7 @@ import {
   AvatarProgressEvent,
   SourceType,
   RawSourceData,
+  RawSourceItem,
   SubAvatarV2,
   SubAvatarAngles,
   ComparativeRow,
@@ -654,6 +655,21 @@ export interface RunAvatarExcavationParams {
   // target market). Passed through to the discovery prompt only — the rest
   // of the pipeline treats the run as a normal fresh excavation.
   reverseSeeds?: ReverseEngineeredFunnel | null;
+  // When set, skip Phase 2 fetch entirely and use this pre-scraped data.
+  // Lets the worker reuse a cached fetch from a previous failed run so we
+  // don't re-burn BD credits on every retry.
+  prefetchedData?: Partial<Record<SourceType, RawSourceData>>;
+  // Fires the moment Phase 2 fetch finishes (before any LLM phase). Lets
+  // the server-only worker persist the fetch output to cache immediately,
+  // so a Vercel timeout during analyzers/compile doesn't void the work.
+  // Skipped on cache-hit runs (prefetchedData already supplied).
+  onFetchComplete?: (data: Partial<Record<SourceType, RawSourceData>>) => Promise<void>;
+  // STAGED EXECUTION: when true, runs Phase 0-2 only (discovery + fetch +
+  // cache write) and returns early. Lets the worker split the pipeline
+  // across two Vercel function invocations so each fits within the
+  // function-duration cap. Stage 2 runs in a separate /continue request
+  // with `prefetchedData` set from the cache.
+  stopAfterFetch?: boolean;
 }
 
 export interface RunAvatarExcavationResult {
@@ -661,6 +677,10 @@ export interface RunAvatarExcavationResult {
   rawText: string;
   totalTokens: { input: number; output: number };
   error?: string;
+  // Returned for the worker to cache. Always populated whether the
+  // pipeline succeeded or threw — caller can persist it independent
+  // of downstream LLM phases.
+  fetchData?: Partial<Record<SourceType, RawSourceData>>;
 }
 
 export async function runAvatarExcavation(
@@ -696,6 +716,11 @@ export async function runAvatarExcavation(
     analyze_ms: 0,
     compile_ms: 0,
   };
+
+  // Captured outside the try so both success and error returns can expose
+  // it. Lets the worker persist scrape output to cache even if downstream
+  // LLM phases blow up.
+  let capturedFetchData: Partial<Record<SourceType, RawSourceData>> | undefined = undefined;
 
   try {
     // ================================================================
@@ -749,21 +774,70 @@ export async function runAvatarExcavation(
     // PHASE 2 — FETCHING (real scraping, parallel)
     // ================================================================
     const fetchStart = Date.now();
-    onProgress?.({
-      phase: 'fetching',
-      message: 'Spinning up source fetchers in parallel...',
-      progress: 0.2,
-    });
-
-    const fetchResult = await runSourceFetchers({
-      plan,
-      config,
-      language: core.language,
-      market: core.market,
-      redditDepth,
-      onProgress,
-    });
+    let fetchResult: Awaited<ReturnType<typeof runSourceFetchers>>;
+    if (params.prefetchedData) {
+      // Cache hit from worker — skip Phase 2 entirely.
+      const totalItems = Object.values(params.prefetchedData)
+        .reduce((sum, b) => sum + (b?.itemCount ?? b?.items?.length ?? 0), 0);
+      fetchResult = {
+        data: params.prefetchedData,
+        totalItems,
+        errors: [],
+        totalDurationMs: 0,
+      };
+      onProgress?.({
+        phase: 'fetching',
+        message: `Cache hit — reusing ${totalItems} pre-scraped items from previous run (skipping Phase 2)`,
+        progress: 0.5,
+      });
+    } else {
+      onProgress?.({
+        phase: 'fetching',
+        message: 'Spinning up source fetchers in parallel...',
+        progress: 0.2,
+      });
+      fetchResult = await runSourceFetchers({
+        plan,
+        config,
+        language: core.language,
+        market: core.market,
+        redditDepth,
+        onProgress,
+      });
+    }
     phaseTimings.fetch_ms = Date.now() - fetchStart;
+    // Capture for the outer scope so the catch path can still return it.
+    capturedFetchData = fetchResult.data;
+
+    // Hand the fetch output to the worker IMMEDIATELY so it can persist to
+    // cache before any LLM phase has a chance to time out. The callback is
+    // server-side only (passed by avatarWorker) — it's a no-op when the
+    // function runs on the client.
+    if (!params.prefetchedData && fetchResult.totalItems > 0 && params.onFetchComplete) {
+      try {
+        await params.onFetchComplete(fetchResult.data);
+      } catch (err) {
+        console.warn('[excavation] onFetchComplete callback failed (non-fatal):', err);
+      }
+    }
+
+    // STAGE 1 EXIT: when running in two-stage mode, return now. The
+    // worker will fire-and-forget a continue request that re-enters this
+    // function with prefetchedData=cached and runs LLM phases there with
+    // its own fresh function-duration budget.
+    if (params.stopAfterFetch) {
+      onProgress?.({
+        phase: 'fetching',
+        message: `Stage 1 complete: ${fetchResult.totalItems} items fetched + cached. Triggering Stage 2 (LLM phases) in a fresh function...`,
+        progress: 0.5,
+      });
+      return {
+        result: null,
+        rawText: '',
+        totalTokens,
+        fetchData: capturedFetchData,
+      };
+    }
 
     const fetchedSources = Object.keys(fetchResult.data) as SourceType[];
     const totalItems = fetchResult.totalItems;
@@ -807,13 +881,148 @@ export async function runAvatarExcavation(
     }
 
     // ================================================================
+    // PHASE 2.6 — VOYAGE DEDUP (cross-source, non-fatal)
+    // ================================================================
+    // Voyage embeddings + cosine 0.92 to collapse near-duplicate items
+    // BEFORE analyzers see the data. Saves Sonnet tokens on Phase 3 and
+    // raises signal density. The deterministic Phase 2.5 raw signal is
+    // already built from the unfiltered corpus, so we're not losing any
+    // golden phrases — just saving tokens on the LLM passes.
+    try {
+      const allItems = Object.values(fetchResult.data)
+        .flatMap(d => d?.items ?? [])
+        .filter(it => it && it.url && (it.content ?? '').length > 0);
+
+      if (allItems.length >= 5 && allItems.length <= 1000) {
+        const dedupRes = await fetch(apiUrl('/api/avatars/dedup-items'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: allItems, threshold: 0.92 }),
+          credentials: 'same-origin',
+        });
+        if (dedupRes.ok) {
+          const data = await dedupRes.json();
+          if (data.ok && data.before > data.after) {
+            // Reduction → rebuild fetchResult.data with kept items only.
+            const keptByUrl = new Set<string>(data.kept.map((it: { url: string }) => it.url));
+            for (const sourceKey of Object.keys(fetchResult.data) as SourceType[]) {
+              const bucket = fetchResult.data[sourceKey];
+              if (!bucket) continue;
+              const filtered = bucket.items.filter(it => keptByUrl.has(it.url));
+              bucket.items = filtered;
+              bucket.itemCount = filtered.length;
+            }
+            const reductionPct = (((data.before - data.after) / data.before) * 100).toFixed(1);
+            onProgress?.({
+              phase: 'fetching',
+              message: `Voyage dedup: ${data.before} → ${data.after} items (${reductionPct}% collapsed, ${data.durationMs}ms)`,
+              progress: 0.535,
+            });
+            if (typeof window !== 'undefined') {
+              console.log('[avatar:dedup]', { before: data.before, after: data.after, collapsed: data.collapsed, durationMs: data.durationMs });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (typeof window !== 'undefined') {
+        console.warn('[avatar:dedup] failed (non-fatal):', e);
+      }
+    }
+
+    // ================================================================
+    // PHASE 2.7 — VOYAGE RERANK (relevance scoring, non-fatal)
+    // ================================================================
+    // Cross-encoder rerank-2-lite scores every item against the user's
+    // surface_desire. Drops items below the noise floor (score < 0.02)
+    // and sorts the rest by score so analyzer LLMs see high-signal
+    // verbatims first. Each kept item gets `metadata.relevance_score`
+    // stamped on it for downstream gates / UI / qualityScore reuse.
+    // Cost: ~$0.005 per excavation (rerank-2-lite at $0.02/1M tokens).
+    try {
+      const allItems = Object.values(fetchResult.data)
+        .flatMap(d => d?.items ?? [])
+        .filter(it => it && it.url && (it.content ?? '').length > 0);
+
+      const relevanceQuery = (core.surface_desire ?? '').trim();
+      if (allItems.length >= 5 && allItems.length <= 1000 && relevanceQuery.length > 0) {
+        const rerankRes = await fetch(apiUrl('/api/avatars/rerank-items'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: allItems,
+            query: relevanceQuery,
+            minScore: 0.02,
+          }),
+          credentials: 'same-origin',
+        });
+        if (rerankRes.ok) {
+          const data = await rerankRes.json();
+          if (data.ok && data.dropped > 0) {
+            // Build a scored URL map so we can both filter AND attach the
+            // relevance score back onto items in fetchResult.data.
+            const scoreByUrl = new Map<string, number>();
+            for (const it of (data.kept as RawSourceItem[])) {
+              const s = (it.metadata as { relevance_score?: number } | undefined)?.relevance_score;
+              if (typeof s === 'number') scoreByUrl.set(it.url, s);
+            }
+            for (const sourceKey of Object.keys(fetchResult.data) as SourceType[]) {
+              const bucket = fetchResult.data[sourceKey];
+              if (!bucket) continue;
+              const next: RawSourceItem[] = [];
+              for (const it of bucket.items) {
+                const s = scoreByUrl.get(it.url);
+                if (s === undefined) continue; // dropped
+                next.push({
+                  ...it,
+                  metadata: { ...(it.metadata ?? {}), relevance_score: s },
+                });
+              }
+              // Sort within each source by relevance desc — analyzers iterating
+              // per-source see strongest signal first.
+              next.sort((a, b) => {
+                const sa = (a.metadata as { relevance_score?: number } | undefined)?.relevance_score ?? 0;
+                const sb = (b.metadata as { relevance_score?: number } | undefined)?.relevance_score ?? 0;
+                return sb - sa;
+              });
+              bucket.items = next;
+              bucket.itemCount = next.length;
+            }
+            onProgress?.({
+              phase: 'fetching',
+              message: `Voyage rerank: ${data.before} → ${data.after} items (top score ${(data.topScore ?? 0).toFixed(2)}, ${data.durationMs}ms)`,
+              progress: 0.538,
+            });
+            if (typeof window !== 'undefined') {
+              console.log('[avatar:rerank]', { before: data.before, after: data.after, dropped: data.dropped, topScore: data.topScore, medianScore: data.medianScore, durationMs: data.durationMs });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (typeof window !== 'undefined') {
+        console.warn('[avatar:rerank] failed (non-fatal):', e);
+      }
+    }
+
+    // ================================================================
     // PHASE 2.75 — DYNAMIC SOURCE DOUBLING (non-fatal)
     // Analyze which sources yielded the richest signal and run
     // additional queries on the top producers. Skip barren sources.
+    // Adds 30-90s on top of the regular fetch. Skippable via
+    // DISABLE_SOURCE_DOUBLING=1 when we're tight against the
+    // Vercel function duration cap.
     // ================================================================
     let sourceDoubledItemCount = 0;
+    const sourceDoublingDisabled = process.env.DISABLE_SOURCE_DOUBLING === '1'
+      || process.env.NEXT_PUBLIC_DISABLE_SOURCE_DOUBLING === '1';
+    if (sourceDoublingDisabled) {
+      if (typeof window !== 'undefined') {
+        console.log('[avatar:source-doubling] skipped via DISABLE_SOURCE_DOUBLING flag');
+      }
+    }
     try {
-      if (rawSignal && rawSignal.total_items > 0) {
+      if (!sourceDoublingDisabled && rawSignal && rawSignal.total_items > 0) {
         const sourceBreakdown = rawSignal.source_breakdown;
         const totalItemCount = rawSignal.total_items;
 
@@ -1040,7 +1249,10 @@ export async function runAvatarExcavation(
       (sum, r) => sum + (r.analysis?.verbatim_quotes?.length ?? 0),
       0,
     );
-    const shouldSkipGapFill = totalVerbatimsCaptured >= 180 && successfulAnalyzers >= 3;
+    const gapFillKilled = process.env.DISABLE_GAP_FILL === '1'
+      || process.env.NEXT_PUBLIC_DISABLE_GAP_FILL === '1';
+    const shouldSkipGapFill = gapFillKilled
+      || (totalVerbatimsCaptured >= 180 && successfulAnalyzers >= 3);
 
     if (shouldSkipGapFill) {
       onProgress?.({
@@ -1458,10 +1670,15 @@ HARD LIMITS:
     //   C: Swipe vocabulary extraction (deterministic)
     // ================================================================
 
-    // A: Adversarial validation — LLM challenges each sub-avatar
+    // A: Adversarial validation — LLM challenges each sub-avatar.
+    // Skippable via DISABLE_ADVERSARIAL=1 to save 60-90s when racing the
+    // Vercel function cap. Sub-avatars stay valid without it; we just
+    // miss the strongest/weakest tagging.
+    const adversarialKilled = process.env.DISABLE_ADVERSARIAL === '1'
+      || process.env.NEXT_PUBLIC_DISABLE_ADVERSARIAL === '1';
     let adversarialReport: AdversarialReport | undefined;
     try {
-      if (compileParsed.sub_avatars.length >= 2) {
+      if (!adversarialKilled && compileParsed.sub_avatars.length >= 2) {
         onProgress?.({
           phase: 'compiling',
           message: 'Running adversarial validation — stress-testing each sub-avatar...',
@@ -1594,6 +1811,7 @@ HARD LIMITS:
       result,
       rawText: rawCompileText,
       totalTokens,
+      fetchData: capturedFetchData,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1606,6 +1824,7 @@ HARD LIMITS:
       rawText: '',
       totalTokens,
       error: message,
+      fetchData: capturedFetchData,
     };
   }
 }

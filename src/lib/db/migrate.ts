@@ -251,5 +251,24 @@ export async function runMigrations(): Promise<{ applied: string[] }> {
   await sql`CREATE INDEX IF NOT EXISTS pipeline_jobs_status_idx
             ON pipeline_jobs (status, heartbeat_at DESC)`;
 
+  // === excavation_fetch_cache: caches Phase 2 fetch output keyed by
+  // hash of (product + niche + surface_desire + language + market +
+  // config). Lets a retry on the same inputs skip re-scraping (saves
+  // BD credit). 6h TTL by default — caller passes `expires_at`.
+  await sql`
+    CREATE TABLE IF NOT EXISTS excavation_fetch_cache (
+      cache_key       TEXT PRIMARY KEY,
+      data            JSONB NOT NULL,
+      inputs_summary  TEXT NOT NULL,
+      cached_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at      TIMESTAMPTZ NOT NULL,
+      hit_count       INTEGER NOT NULL DEFAULT 0
+    )
+  `;
+  applied.push('excavation_fetch_cache');
+
+  await sql`CREATE INDEX IF NOT EXISTS excavation_fetch_cache_expires_idx
+            ON excavation_fetch_cache (expires_at)`;
+
   return { applied };
 }

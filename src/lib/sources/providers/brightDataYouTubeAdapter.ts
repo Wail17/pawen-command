@@ -14,25 +14,38 @@ import { brightDataCollect, brightDataHealth, BD_NOW } from './brightDataCommon'
 import { requireEnv } from './common';
 
 interface YouTubeVideoRow {
+  // Confirmed schema from live Bright Data probe (2026-04-26):
   url?: string;
   video_id?: string;
   title?: string;
   description?: string;
-  channel?: string;
-  channel_name?: string;
-  view_count?: number;
-  like_count?: number;
-  comment_count?: number;
-  posted_at?: string;
+  youtuber?: string;          // channel name (NOT `channel` / `channel_name`)
+  channel_url?: string;
+  views?: number;             // view count (NOT `view_count`)
+  likes?: number;             // like count (NOT `like_count`)
+  num_comments?: number;      // comment count (NOT `comment_count`)
+  date_posted?: string;       // ISO timestamp (NOT `posted_at`)
+  subscribers?: number;
   hashtags?: string[];
+  tags?: string[];
+  transcript?: string;
 }
 interface YouTubeCommentRow {
-  parent_url?: string;
-  text?: string;
-  comment_text?: string;
-  author?: string;
-  like_count?: number;
-  replies?: Array<{ text?: string; author?: string; like_count?: number }>;
+  // BD comments naming convention mirrors TikTok/Reddit — confirmed by
+  // pattern across other BD comment datasets (post_url + commenter_*).
+  // If actual schema differs, surface it via console.error and iterate.
+  url?: string;             // video URL we asked about
+  post_url?: string;        // synonym some BD datasets use
+  comment_id?: string;
+  comment_url?: string;
+  comment_text?: string;    // the body
+  comment?: string;         // some datasets use `comment` instead
+  num_likes?: number;
+  num_replies?: number;
+  commenter_user_name?: string;
+  commenter_id?: string;
+  date_created?: string;
+  date_posted?: string;
 }
 
 const VIDEOS_DEFAULT = 'gd_lk56epmy2i5g7lzu0k';
@@ -72,53 +85,86 @@ export class BrightDataYouTubeAdapter implements VideoProvider {
         url: r.url,
         videoId: videoId ?? '',
         title: r.title,
-        content: [r.title, r.description].filter(Boolean).join('\n\n'),
+        // Include transcript when present — it's the highest-signal text on a video.
+        content: [r.title, r.description, r.transcript].filter(Boolean).join('\n\n'),
         platform: 'youtube',
         caption: r.description,
-        author: r.channel ?? r.channel_name,
-        playCount: r.view_count,
-        likeCount: r.like_count,
-        commentCount: r.comment_count,
-        hashtags: r.hashtags,
+        author: r.youtuber,
+        playCount: r.views,
+        likeCount: r.likes,
+        commentCount: r.num_comments,
+        hashtags: r.hashtags ?? r.tags,
         comments: [],
-        publishedAt: r.posted_at,
+        publishedAt: r.date_posted,
         fetchedAt: BD_NOW(),
         providerId: this.id,
       });
     }
 
-    // Hydrate comments for top videos
-    if (videos.length > 0) {
+    // YT comments hydration — re-enabled with HARD BUDGET CAPS because BD
+    // has no native `limit` parameter on this dataset and a single mega-
+    // viral can return 50k+ rows ($75+).
+    //   - Skip if BRIGHTDATA_DISABLE_YOUTUBE_COMMENTS=1
+    //   - Top 2 videos by likes
+    //   - Drop videos with views > 50k (tight mega-viral filter)
+    //   - Drop videos with declared num_comments > 300
+    //   - Worst-case cost per run: ~$0.90 (2 × 300 records × $1.50/1k)
+    //   - Realistic per niche query: <$0.20
+    //   - Hard 90s timeout so we don't blow the route budget
+    if (videos.length > 0 && process.env.BRIGHTDATA_DISABLE_YOUTUBE_COMMENTS !== '1') {
       const commentsId = requireEnv('BRIGHTDATA_DATASET_ID_YOUTUBE_COMMENTS') ?? COMMENTS_DEFAULT;
-      const top = videos.slice(0, 6);
-      try {
-        const cInputs = top.map(v => ({ url: v.url, num_of_comments: opts.maxCommentsPerVideo ?? 50 }));
-        const commentRows = await brightDataCollect<YouTubeCommentRow>({
-          providerId: this.id,
-          datasetId: commentsId,
-          inputs: cInputs,
-          discoverBy: 'video_url',
-        });
-        const byVideo = new Map<string, YouTubeCommentRow[]>();
-        for (const c of commentRows) {
-          const key = c.parent_url ?? '';
-          if (!key) continue;
-          const arr = byVideo.get(key) ?? [];
-          arr.push(c);
-          byVideo.set(key, arr);
+      const top = videos
+        .filter(v => (v.playCount ?? 0) <= 50_000)
+        .filter(v => (v.commentCount ?? 0) <= 300)
+        .slice()
+        .sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0))
+        .slice(0, 2);
+      if (top.length > 0) {
+        try {
+          const cInputs = top.map(v => ({ url: v.url }));
+          const commentRows = await brightDataCollect<YouTubeCommentRow>({
+            providerId: this.id,
+            datasetId: commentsId,
+            inputs: cInputs,
+            type: 'url_collection',
+            timeoutMs: 90_000,
+          });
+          const estCost = (commentRows.length / 1000) * 1.5;
+          console.log(`[brightdata-youtube] comments: ${commentRows.length} rows for ${top.length} videos (~$${estCost.toFixed(3)} BD cost)`);
+          // Log actual schema once so if the field-name guess is wrong we
+          // can spot it in Vercel logs without burning more credit on probes.
+          if (commentRows.length > 0) {
+            console.log(`[brightdata-youtube] comment row keys: ${Object.keys(commentRows[0]).join(', ')}`);
+          }
+          if (commentRows.length > 5000) {
+            console.warn(`[brightdata-youtube] WARN: ${commentRows.length} rows is unusually high — tighten the view-count filter`);
+          }
+          // Group by video URL — try post_url first then url
+          const byVideo = new Map<string, YouTubeCommentRow[]>();
+          for (const c of commentRows) {
+            const key = c.post_url ?? c.url ?? '';
+            if (!key) continue;
+            const arr = byVideo.get(key) ?? [];
+            arr.push(c);
+            byVideo.set(key, arr);
+          }
+          for (const v of videos) {
+            const list = (byVideo.get(v.url) ?? []).slice(0, opts.maxCommentsPerVideo ?? 80);
+            v.comments = list
+              .filter(c => c.comment_text || c.comment)
+              .map(c => ({
+                text: (c.comment_text ?? c.comment ?? '').slice(0, 1500),
+                likes: c.num_likes,
+                author: c.commenter_user_name,
+              }));
+          }
+        } catch (e) {
+          console.error(`[brightdata-youtube] comments fetch error (videos still returned without comments): ${e instanceof Error ? e.message : String(e)}`);
         }
-        for (const v of videos) {
-          const list = (byVideo.get(v.url) ?? []).slice(0, opts.maxCommentsPerVideo ?? 50);
-          v.comments = list.map(c => ({
-            text: c.text ?? c.comment_text ?? '',
-            author: c.author,
-            likes: c.like_count,
-            replies: (c.replies ?? []).map(r => ({ text: r.text ?? '', author: r.author, likes: r.like_count })),
-          }));
-        }
-      } catch { /* silent */ }
+      } else {
+        console.log(`[brightdata-youtube] comments skipped — no videos passed the views≤200k AND declared-comments≤1000 filter (mega-viral guard)`);
+      }
     }
-
     return videos;
   }
 

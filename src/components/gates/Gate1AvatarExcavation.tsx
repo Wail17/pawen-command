@@ -204,6 +204,30 @@ export default function Gate1AvatarExcavation({
   const handleJobError = useCallback(
     async (msg: string) => {
       const ctx = pendingJobCtxRef.current;
+      // "Job not found" only happens when the UI auto-resumed on a stored
+      // jobId that no longer exists in the DB (deploy churn / DB cleanup).
+      // It's not a real failure — just stale state. Clear silently and
+      // let the user re-launch without a scary red error or Discord ping.
+      const isStaleResume =
+        msg.toLowerCase().includes('job not found') ||
+        msg.toLowerCase().includes('expired');
+      if (isStaleResume && !ctx) {
+        if (project.activeAvatarJobId) {
+          const cleared: Project = {
+            ...project,
+            activeAvatarJobId: null,
+            updatedAt: new Date().toISOString(),
+          };
+          // Best-effort persist; if IDB write fails, in-memory clear still
+          // unblocks the current session.
+          await saveProject(cleared).catch(() => {});
+          onProjectChange(cleared);
+        }
+        setIsRunning(false);
+        setError(null);
+        setProgressEvents([]);
+        return;
+      }
       setError(msg);
       setIsRunning(false);
       notifyGateError({
@@ -219,7 +243,7 @@ export default function Gate1AvatarExcavation({
           activeAvatarJobId: null,
           updatedAt: new Date().toISOString(),
         };
-        await saveProject(cleared);
+        await saveProject(cleared).catch(() => {});
         onProjectChange(cleared);
       }
       pendingJobCtxRef.current = null;

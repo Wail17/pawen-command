@@ -17,6 +17,7 @@
     "@vercel/blob": "^2.3.3",
     "fflate": "^0.8.2",
     "idb": "^8.0.3",
+    "inngest": "^4.2.4",
     "jsonrepair": "^3.13.3",
     "liquidjs": "^10.25.5",
     "next": "16.2.2",

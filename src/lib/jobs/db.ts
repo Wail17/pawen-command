@@ -83,7 +83,11 @@ export async function getJobForOwner(
 // heartbeat_at but the row is still 'running'. Without this, the client
 // would poll forever. We mark any 'running' job whose heartbeat hasn't
 // advanced for STALE_AFTER_MS as failed, with a clear error message.
-const STALE_AFTER_MS = 5 * 60 * 1000;
+// 12 min — the Amazon BD scrape alone can take ~290s without writing a
+// progress event (no heartbeat during BD poll loop). Plus YouTube/TikTok
+// can stretch up to 270s. 5 min was too tight; 12 covers the worst case
+// while still catching genuinely-dead workers within a reasonable window.
+const STALE_AFTER_MS = 12 * 60 * 1000;
 
 export async function reapStaleJob(job: PipelineJobRow): Promise<PipelineJobRow> {
   if (job.status !== 'running' && job.status !== 'pending') return job;

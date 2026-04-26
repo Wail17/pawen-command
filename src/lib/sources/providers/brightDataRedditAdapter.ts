@@ -16,25 +16,28 @@ import { brightDataCollect, brightDataHealth, BD_NOW } from './brightDataCommon'
 import { requireEnv } from './common';
 
 interface RedditPostRow {
+  // Confirmed schema from live Bright Data response (2026-04-26):
   url?: string;
   post_id?: string;
   title?: string;
-  text?: string;
-  description?: string;
-  subreddit?: string;
-  author?: string;
-  score?: number;
+  description?: string;       // post body (often null for link/video posts)
+  community_name?: string;    // subreddit name (NOT `subreddit`)
+  user_posted?: string;       // author username (NOT `author`)
+  num_upvotes?: number;       // score (NOT `score`)
   num_comments?: number;
-  created_utc?: number;
-  posted_at?: string;
+  date_posted?: string;       // ISO timestamp (NOT `created_utc` epoch)
 }
 interface RedditCommentRow {
-  url?: string;
-  parent_url?: string;
-  body?: string;
-  author?: string;
-  score?: number;
-  created_utc?: number;
+  // Confirmed schema from live Bright Data response (2026-04-25):
+  url?: string;             // url of the comment itself
+  post_url?: string;        // parent post URL — what we link by
+  comment_id?: string;
+  comment?: string;         // the actual text (NOT `body`)
+  user_posted?: string;     // author username (NOT `author`)
+  num_upvotes?: number;     // score (NOT `score`)
+  date_posted?: string;
+  parent_comment_id?: string;
+  root_comment_id?: string;
 }
 
 const POSTS_DEFAULT = 'gd_lvz8ah06191smkebj4';
@@ -66,7 +69,10 @@ export class BrightDataRedditAdapter implements SocialProvider {
       }));
       discoverBy = 'subreddit_url';
     } else {
-      triggers = [{ keyword: query, num_of_posts: limit, language: opts.language }];
+      // BD's keyword discover requires `date` and `sort_by` — without them
+      // the trigger fails with HTTP 400 "validation_error". Confirmed
+      // 2026-04-26 against gd_lvz8ah06191smkebj4.
+      triggers = [{ keyword: query, num_of_posts: limit, date: 'All time', sort_by: 'Hot' }];
       discoverBy = 'keyword';
     }
 
@@ -83,14 +89,12 @@ export class BrightDataRedditAdapter implements SocialProvider {
       posts.push({
         url: r.url,
         title: r.title,
-        content: (r.text ?? r.description ?? r.title ?? '').slice(0, 8000),
-        author: r.author,
-        score: r.score,
+        content: (r.description ?? r.title ?? '').slice(0, 8000),
+        author: r.user_posted,
+        score: r.num_upvotes,
         commentCount: r.num_comments,
-        subreddit: r.subreddit,
-        publishedAt: r.created_utc
-          ? new Date(r.created_utc * 1000).toISOString()
-          : (r.posted_at ?? undefined),
+        subreddit: r.community_name,
+        publishedAt: r.date_posted ?? undefined,
         platform: 'reddit',
         comments: [],
         metadata: { post_id: r.post_id },
@@ -99,22 +103,37 @@ export class BrightDataRedditAdapter implements SocialProvider {
       });
     }
 
-    // Hydrate comments for the top-scoring posts
-    if (opts.deepComments !== false && posts.length > 0) {
+    // Hydrate comments for the top-scoring posts.
+    // HARD BUDGET CAPS — every constant here is a money-saver:
+    //   - Skip if BRIGHTDATA_DISABLE_REDDIT_COMMENTS=1 (kill switch)
+    //   - Cap to top 3 posts (was 5) → ≤ ~150 records per run, ~$0.25
+    //   - Filter out megathreads (commentCount > 2000) — those alone can be
+    //     5k+ records each and balloon the bill on r/AskReddit-style URLs.
+    if (opts.deepComments !== false && posts.length > 0 && process.env.BRIGHTDATA_DISABLE_REDDIT_COMMENTS !== '1') {
       const commentsId = requireEnv('BRIGHTDATA_DATASET_ID_REDDIT_COMMENTS') ?? COMMENTS_DEFAULT;
-      const top = posts.slice().sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 5);
+      const top = posts
+        .slice()
+        .filter(p => (p.commentCount ?? 0) <= 2000)
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+        .slice(0, 3);
       try {
         const commentInputs = top.map(p => ({ url: p.url }));
         const commentRows = await brightDataCollect<RedditCommentRow>({
           providerId: this.id,
           datasetId: commentsId,
           inputs: commentInputs,
-          discoverBy: 'post_url',
+          type: 'url_collection',
         });
-        // Group by parent post URL
+        // Surface cost: BD bills $1.50/1000 records — log loudly.
+        const estCost = (commentRows.length / 1000) * 1.5;
+        console.log(`[brightdata-reddit] comments: ${commentRows.length} rows for ${top.length} posts (~$${estCost.toFixed(3)} BD cost)`);
+        if (commentRows.length > 5000) {
+          console.warn(`[brightdata-reddit] WARN: ${commentRows.length} comment rows is unusually high — investigate input post selection`);
+        }
+        // Group by parent post URL — Bright Data field is `post_url`
         const byPost = new Map<string, RedditCommentRow[]>();
         for (const c of commentRows) {
-          const key = c.parent_url ?? c.url ?? '';
+          const key = c.post_url ?? '';
           if (!key) continue;
           const arr = byPost.get(key) ?? [];
           arr.push(c);
@@ -123,11 +142,12 @@ export class BrightDataRedditAdapter implements SocialProvider {
         for (const p of posts) {
           const matched = byPost.get(p.url) ?? [];
           p.comments = matched.slice(0, opts.maxCommentsPerThread ?? 50)
-            .filter(c => c.body && c.body !== '[removed]' && c.body !== '[deleted]')
-            .map(c => ({ text: c.body!, author: c.author, score: c.score }));
+            .filter(c => c.comment && c.comment !== '[removed]' && c.comment !== '[deleted]')
+            .map(c => ({ text: c.comment!, author: c.user_posted, score: c.num_upvotes }));
         }
-      } catch {
-        // Silent — posts without comments still useful.
+      } catch (e) {
+        // Log but don't fail the whole fetch — posts without comments still useful.
+        console.error(`[brightdata-reddit] comments hydration error: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 

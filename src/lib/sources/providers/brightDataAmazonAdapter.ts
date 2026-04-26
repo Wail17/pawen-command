@@ -12,34 +12,67 @@ import { brightDataCollect, brightDataHealth, BD_NOW } from './brightDataCommon'
 import { requireEnv } from './common';
 
 interface AmazonSearchRow {
+  // Confirmed schema from live Bright Data probe (2026-04-26):
   asin?: string;
   url?: string;
-  title?: string;
+  name?: string;              // product title (NOT `title`)
+  brand?: string;
   rating?: number;
-  reviews_count?: number;
-  ratings_total?: number;
-  price?: number | string;
+  num_ratings?: number;       // review count (NOT `reviews_count` / `ratings_total`)
+  initial_price?: number | string;
+  final_price?: number | string;  // current price (NOT `price`)
   currency?: string;
   image?: string;
+  is_prime?: boolean;
+  sold?: string;              // "1k+ bought past month"
+  bought_past_month?: string;
+  rank_on_page?: number;
+  sponsored?: boolean;
 }
 interface AmazonReviewRow {
-  parent_url?: string;
+  // Confirmed schema from live Bright Data probe (2026-04-25):
+  url?: string;              // input URL (the product page we asked about)
   asin?: string;
-  title?: string;
-  body?: string;
-  text?: string;
-  rating?: number;
-  author?: string;
-  reviewer_name?: string;
-  date?: string;
-  review_date?: string;
-  verified_purchase?: boolean;
+  product_name?: string;
+  product_rating?: number;
+  product_rating_count?: number;
+  rating?: number;            // this review's rating
+  review_header?: string;     // review title
+  review_text?: string;       // review body — the gold
+  review_id?: string;
+  author_name?: string;
+  author_id?: string;
+  badge?: string;             // "Verified Purchase" etc.
+  review_posted_date?: string;
+  review_country?: string;
+  helpful_count?: number;
+  is_amazon_vine?: boolean;
   is_verified?: boolean;
+  variant_name?: string;
 }
 
 const SEARCH_DEFAULT = 'gd_lwdb4vjm1ehb499uxs';
 const REVIEWS_DEFAULT = 'gd_le8e811kzy4ggddlq';
 // const PRODUCTS_DEFAULT = 'gd_l7q7dkf244hwjntr0'; // reserved for ASIN-direct lookups
+
+function buildProductOnly(p: AmazonSearchRow, domain: string, providerId: string): EcomResult {
+  return {
+    url: p.url!,
+    title: p.name,
+    content: [p.name, `Rating: ${p.rating ?? '?'}/5 (${p.num_ratings ?? 0} reviews)`].filter(Boolean).join('\n'),
+    platform: 'amazon',
+    productId: p.asin,
+    price: p.final_price ?? p.initial_price,
+    currency: p.currency,
+    rating: p.rating,
+    reviewCount: p.num_ratings,
+    reviews: [],
+    marketplace: domain,
+    metadata: { image: p.image, brand: p.brand },
+    fetchedAt: BD_NOW(),
+    providerId,
+  };
+}
 
 function tldFromMarketplace(marketplace: string | undefined): string {
   const m = (marketplace ?? 'amazon.com').toLowerCase();
@@ -72,82 +105,95 @@ export class BrightDataAmazonAdapter implements EcomProvider {
       type: 'url_collection',
     });
 
+    // HARD BUDGET CAPS for Amazon reviews — same dataset that returned 404
+    // reviews for one Echo Dot URL. Mega-products (>1k reviews) are exactly
+    // the ones that explode the bill. Skip them; product metadata still
+    // lands in `products` from the search dataset.
+    //   - Cap to top 4 products by popularity (was 8)
+    //   - Drop products with reviews_count > 1000 to avoid mega-haul
+    //   - Kill switch via BRIGHTDATA_DISABLE_AMAZON_REVIEWS=1
+    const PRODUCT_REVIEW_HARDCAP = 1000;
     const products = searchRows
       .filter(r => r.asin && r.url)
-      .sort((a, b) => (b.ratings_total ?? b.reviews_count ?? 0) - (a.ratings_total ?? a.reviews_count ?? 0))
+      .sort((a, b) => (b.num_ratings ?? 0) - (a.num_ratings ?? 0))
       .slice(0, maxProducts);
+
+    const reviewableProducts = products.filter(
+      p => (p.num_ratings ?? 0) <= PRODUCT_REVIEW_HARDCAP,
+    ).slice(0, 4);
 
     // Step 2: reviews per product
     const results: EcomResult[] = [];
-    if (products.length > 0) {
+    const fetchReviews = process.env.BRIGHTDATA_DISABLE_AMAZON_REVIEWS !== '1' && reviewableProducts.length > 0;
+    if (fetchReviews) {
       const reviewsId = requireEnv('BRIGHTDATA_DATASET_ID_AMAZON_REVIEWS') ?? REVIEWS_DEFAULT;
       try {
-        const rInputs = products.map(p => ({ url: p.url, num_of_reviews: maxReviews }));
+        const rInputs = reviewableProducts.map(p => ({ url: p.url }));
         const reviewRows = await brightDataCollect<AmazonReviewRow>({
           providerId: this.id,
           datasetId: reviewsId,
           inputs: rInputs,
-          discoverBy: 'product_url',
+          type: 'url_collection',
         });
-        // Group by ASIN
+        const estCost = (reviewRows.length / 1000) * 1.5;
+        console.log(`[brightdata-amazon] reviews: ${reviewRows.length} rows for ${reviewableProducts.length}/${products.length} products (~$${estCost.toFixed(3)} BD cost)`);
+        if (reviewRows.length > 5000) {
+          console.warn(`[brightdata-amazon] WARN: ${reviewRows.length} review rows is unusually high — investigate filter`);
+        }
+        // Group by ASIN (preferred) with URL fallback
         const byAsin = new Map<string, AmazonReviewRow[]>();
+        const byUrl = new Map<string, AmazonReviewRow[]>();
         for (const rv of reviewRows) {
-          const key = rv.asin ?? rv.parent_url ?? '';
-          if (!key) continue;
-          const arr = byAsin.get(key) ?? [];
-          arr.push(rv);
-          byAsin.set(key, arr);
+          if (rv.asin) {
+            const arr = byAsin.get(rv.asin) ?? [];
+            arr.push(rv);
+            byAsin.set(rv.asin, arr);
+          }
+          if (rv.url) {
+            const arr = byUrl.get(rv.url) ?? [];
+            arr.push(rv);
+            byUrl.set(rv.url, arr);
+          }
         }
         for (const p of products) {
-          const matched = byAsin.get(p.asin ?? '') ?? byAsin.get(p.url ?? '') ?? [];
+          const matched = byAsin.get(p.asin ?? '') ?? byUrl.get(p.url ?? '') ?? [];
           const reviews: EcomReview[] = matched.slice(0, maxReviews)
-            .filter(r => r.body || r.text)
+            .filter(r => r.review_text)
             .map(r => ({
-              author: r.author ?? r.reviewer_name,
+              author: r.author_name,
               rating: r.rating,
-              title: r.title,
-              body: (r.body ?? r.text ?? '').slice(0, 4000),
-              date: r.date ?? r.review_date,
-              verified: r.verified_purchase ?? r.is_verified,
+              title: r.review_header,
+              body: (r.review_text ?? '').slice(0, 4000),
+              date: r.review_posted_date,
+              verified: r.is_verified ?? r.badge?.toLowerCase().includes('verified'),
             }));
           results.push({
             url: p.url!,
-            title: p.title,
-            content: [p.title, `Rating: ${p.rating ?? '?'}/5 (${p.ratings_total ?? p.reviews_count ?? 0} reviews)`].join('\n'),
+            title: p.name,
+            content: [p.name, `Rating: ${p.rating ?? '?'}/5 (${p.num_ratings ?? 0} reviews)`].join('\n'),
             platform: 'amazon',
             productId: p.asin,
-            price: p.price,
+            price: p.final_price ?? p.initial_price,
             currency: p.currency,
             rating: p.rating,
-            reviewCount: p.ratings_total ?? p.reviews_count,
+            reviewCount: p.num_ratings,
             reviews,
             marketplace: domain,
-            metadata: { image: p.image },
+            metadata: { image: p.image, brand: p.brand },
             fetchedAt: BD_NOW(),
             providerId: this.id,
           });
         }
-      } catch {
-        // No reviews — still return product metadata
-        for (const p of products) {
-          results.push({
-            url: p.url!,
-            title: p.title,
-            content: p.title ?? '',
-            platform: 'amazon',
-            productId: p.asin,
-            price: p.price,
-            currency: p.currency,
-            rating: p.rating,
-            reviewCount: p.ratings_total ?? p.reviews_count,
-            reviews: [],
-            marketplace: domain,
-            metadata: { image: p.image },
-            fetchedAt: BD_NOW(),
-            providerId: this.id,
-          });
-        }
+      } catch (e) {
+        console.error(`[brightdata-amazon] reviews fetch error: ${e instanceof Error ? e.message : String(e)}`);
+        results.length = 0;
+        for (const p of products) results.push(buildProductOnly(p, domain, this.id));
       }
+    } else if (products.length > 0) {
+      // Reviews skipped (kill switch on, or all products too large) — still
+      // return product metadata so the search dataset cost isn't wasted.
+      console.log(`[brightdata-amazon] reviews skipped (disabled or all products > ${PRODUCT_REVIEW_HARDCAP} reviews); returning ${products.length} products without reviews`);
+      for (const p of products) results.push(buildProductOnly(p, domain, this.id));
     }
 
     return results;

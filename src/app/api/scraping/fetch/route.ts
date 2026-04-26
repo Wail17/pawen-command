@@ -17,7 +17,11 @@ import {
 } from '@/lib/sources/providers/fetchWrappers';
 import { recordHealth } from '@/lib/sources/scrapingHealth';
 
-export const maxDuration = 300;
+// Reddit posts (270s BD poll) + Reddit comments (270s BD poll) = up to
+// 540s per source call. Amazon search + reviews can also peak around
+// 540s. Setting 800s (Pro plan ceiling) so a single source's BD work
+// never gets cut off mid-poll.
+export const maxDuration = 800;
 
 export async function POST(req: Request) {
   const session = requireSession(req);
