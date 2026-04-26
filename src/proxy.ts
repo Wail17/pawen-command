@@ -137,6 +137,7 @@ const PUBLIC_API_PATHS = new Set<string>([
   '/api/admin/login',
   '/api/shopify-oauth/callback', // Shopify redirects here after OAuth — no session cookie
   '/api/cron/meta-perf', // Phase U.3a — Vercel cron, auth via CRON_SECRET header (checked in handler)
+  '/api/inngest', // Inngest webhook — auth via signature (INNGEST_SIGNING_KEY) verified by serve()
 ]);
 
 // ---------- Helpers ----------
