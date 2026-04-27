@@ -1507,44 +1507,57 @@ export default function Gate1AvatarExcavation({
               </div>
             </div>
 
-            {/* Single-SA fallback (legacy) — kept for when the user wants to
-                focus on ONE sub-avatar instead of running the matrix. */}
-            <details className="text-xs text-text-muted">
-              <summary className="cursor-pointer select-none hover:text-text-primary">
-                Or: continue with a single sub-avatar (legacy flow)
-              </summary>
-              <div className="mt-3 space-y-2">
-                {selectedSubAvatarId && (
-                  <div className="text-xs text-text-muted">
-                    Deep dive will focus on{' '}
-                    <span className="text-accent-teal font-semibold">
-                      {result.sub_avatars.find(sa => sa.id === selectedSubAvatarId)?.nickname ??
-                        selectedSubAvatarId}
-                    </span>
-                    . All Gates 2-9 will be built around this sub-avatar.
+            {/* Single Avatar Mode — peer to Matrix Mode. Always visible so the
+                user has both flows obvious side-by-side. Matrix runs N SAs,
+                Single focuses on 1 SA for Gates 2-9. */}
+            <div className="p-4 rounded-xl border-2 border-accent-teal/40 bg-gradient-to-br from-accent-teal/10 via-bg-card to-bg-card space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-xs uppercase tracking-wider font-black text-accent-teal">
+                    Single Avatar Mode — focus on one sub-avatar
                   </div>
-                )}
-                {!selectedSubAvatarId && (
-                  <div className="text-xs text-accent-orange">
-                    Pick ONE sub-avatar below to focus the deep dive on before continuing.
+                  <div className="text-xs text-text-muted mt-0.5">
+                    Continue Gates 2→9 against ONE sub-avatar. Pick your champion below
+                    by clicking its card, then approve. The selected sub-avatar drives
+                    every downstream gate&apos;s prompts (lead, manager, director, sub-agents).
                   </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleApprove}
-                    disabled={!selectedSubAvatarId}
-                    className="px-6 py-3 bg-success text-white font-semibold rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isApproved ? 'Continue to Gate 2 →' : 'Approve & Continue to Gate 2 →'}
-                  </button>
-                  {isApproved && (
-                    <span className="text-xs text-text-muted">
-                      Gate 1 already approved. Re-running will overwrite the saved result.
-                    </span>
-                  )}
+                </div>
+                <div className="text-xs text-text-primary font-semibold shrink-0">
+                  {selectedSubAvatarId ? '1 selected' : 'none picked'}
                 </div>
               </div>
-            </details>
+
+              {selectedSubAvatarId ? (
+                <div className="text-xs p-2 rounded border border-accent-teal/40 bg-accent-teal/5">
+                  Picked:{' '}
+                  <span className="text-accent-teal font-semibold">
+                    {result.sub_avatars.find(sa => sa.id === selectedSubAvatarId)?.nickname ??
+                      result.sub_avatars.find(sa => sa.id === selectedSubAvatarId)?.name ??
+                      selectedSubAvatarId}
+                  </span>
+                  . All Gates 2-9 will be built around this sub-avatar.
+                </div>
+              ) : (
+                <div className="text-xs p-2 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200">
+                  ⚠ Click the &ldquo;Select&rdquo; button on one of the sub-avatar cards above to pick your focus.
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={handleApprove}
+                  disabled={!selectedSubAvatarId}
+                  className="px-6 py-3 bg-accent-teal text-black font-bold rounded-lg hover:bg-accent-teal/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isApproved ? 'Continue to Gate 2 →' : 'Approve & Continue to Gate 2 →'}
+                </button>
+                {isApproved && (
+                  <span className="text-xs text-text-muted">
+                    Gate 1 already approved. Re-running will overwrite the saved result.
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
