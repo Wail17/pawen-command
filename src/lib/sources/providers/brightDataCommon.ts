@@ -76,6 +76,10 @@ export async function brightDataCollect<T = unknown>(opts: {
   discoverBy?: string;
   timeoutMs?: number;
   type?: 'discover_new' | 'discover_url' | 'collect_data' | 'url_collection';
+  /** Cap records returned per input (BD-side hard limit — affects billing). */
+  limitPerInput?: number;
+  /** Cap multiple records (BD-side hard limit — affects billing for some datasets). */
+  limitMultipleResults?: number;
 }): Promise<T[]> {
   // Master kill switch — set BRIGHTDATA_KILL_SWITCH=1 to stop ALL BD spend.
   if (process.env.BRIGHTDATA_KILL_SWITCH === '1') {
@@ -113,6 +117,11 @@ export async function brightDataCollect<T = unknown>(opts: {
     type: opts.type ?? 'discover_new',
   });
   if (opts.discoverBy) params.set('discover_by', opts.discoverBy);
+  // BD-side hard caps. These reduce records BD scrapes (and therefore bills),
+  // not just what we keep client-side. Without these, an Amazon search that
+  // matches 320 products is billed at 320 even if we slice to 4.
+  if (opts.limitPerInput !== undefined) params.set('limit_per_input', String(opts.limitPerInput));
+  if (opts.limitMultipleResults !== undefined) params.set('limit_multiple_results', String(opts.limitMultipleResults));
 
   const webhookSecret = process.env.BRIGHTDATA_WEBHOOK_SECRET;
   const webhookHost = resolveWebhookHost();

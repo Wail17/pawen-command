@@ -72,6 +72,7 @@ export class BrightDataTikTokAdapter implements VideoProvider {
         datasetId: postsId,
         inputs,
         discoverBy,
+        limitPerInput: maxVideos,
       });
     } catch (e) {
       // Same reasoning as Reddit: re-throw enriched ProviderError so the
@@ -127,6 +128,10 @@ export class BrightDataTikTokAdapter implements VideoProvider {
           inputs,
           type: 'url_collection',
           timeoutMs: 600_000,
+          // Cap BD-side: TikTok megaposts have 5k-100k comments. Without this,
+          // BD scrapes (and bills) every comment even though we only keep
+          // maxComments per video. This was the #1 driver of the €15 day.
+          limitPerInput: opts.maxCommentsPerVideo ?? 30,
         });
         const estCost = (commentRows.length / 1000) * 1.5;
         console.log(`[brightdata-tiktok] comments: ${commentRows.length} rows for ${top.length} videos (~$${estCost.toFixed(3)} BD cost)`);

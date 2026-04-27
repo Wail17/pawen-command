@@ -38,6 +38,8 @@ export class BrightDataQuoraAdapter implements SocialProvider {
       datasetId,
       inputs,
       discoverBy: 'search_url',
+      // Cap BD-side: search may return many threads, we only keep `limit`.
+      limitPerInput: limit,
     });
 
     return rows.slice(0, limit).filter(r => r.url).map(r => {

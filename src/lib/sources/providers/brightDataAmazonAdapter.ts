@@ -103,6 +103,10 @@ export class BrightDataAmazonAdapter implements EcomProvider {
       datasetId: searchId,
       inputs: searchInputs,
       type: 'url_collection',
+      // Cap BD-side: scrape only the top N products from the search results
+      // page. Without this, BD returns the full page (~320 products per query)
+      // and we get billed for all of them despite only keeping `maxProducts`.
+      limitPerInput: maxProducts,
     });
 
     // HARD BUDGET CAPS for Amazon reviews — same dataset that returned 404
@@ -134,6 +138,8 @@ export class BrightDataAmazonAdapter implements EcomProvider {
           datasetId: reviewsId,
           inputs: rInputs,
           type: 'url_collection',
+          // Cap reviews per product BD-side, not after billing.
+          limitPerInput: maxReviews,
         });
         const estCost = (reviewRows.length / 1000) * 1.5;
         console.log(`[brightdata-amazon] reviews: ${reviewRows.length} rows for ${reviewableProducts.length}/${products.length} products (~$${estCost.toFixed(3)} BD cost)`);

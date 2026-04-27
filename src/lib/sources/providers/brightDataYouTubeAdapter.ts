@@ -75,6 +75,7 @@ export class BrightDataYouTubeAdapter implements VideoProvider {
       datasetId: videosId,
       inputs,
       discoverBy: 'keyword',
+      limitPerInput: maxVideos,
     });
 
     const videos: VideoResult[] = [];
@@ -128,6 +129,9 @@ export class BrightDataYouTubeAdapter implements VideoProvider {
             inputs: cInputs,
             type: 'url_collection',
             timeoutMs: 600_000,
+            // Cap BD-side: a single viral video can have 50k+ comments. We
+            // only keep maxCommentsPerVideo, but BD bills for all scraped.
+            limitPerInput: opts.maxCommentsPerVideo ?? 80,
           });
           const estCost = (commentRows.length / 1000) * 1.5;
           console.log(`[brightdata-youtube] comments: ${commentRows.length} rows for ${top.length} videos (~$${estCost.toFixed(3)} BD cost)`);

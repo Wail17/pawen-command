@@ -83,6 +83,7 @@ export class BrightDataRedditAdapter implements SocialProvider {
         datasetId: postsId,
         inputs: triggers,
         discoverBy,
+        limitPerInput: limit,
       });
     } catch (e) {
       // Posts dataset throws on quota exhaustion (402), bad input shape (4xx),
@@ -136,6 +137,10 @@ export class BrightDataRedditAdapter implements SocialProvider {
           datasetId: commentsId,
           inputs: commentInputs,
           type: 'url_collection',
+          // Cap BD-side: a Reddit thread can have 1000+ comments. Without
+          // this BD bills for all scraped even though we only keep
+          // maxCommentsPerThread per post.
+          limitPerInput: opts.maxCommentsPerThread ?? 50,
         });
         // Surface cost: BD bills $1.50/1000 records — log loudly.
         const estCost = (commentRows.length / 1000) * 1.5;
