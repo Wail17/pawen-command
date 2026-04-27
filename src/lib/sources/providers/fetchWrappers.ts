@@ -15,29 +15,27 @@ import { getSocialProvider, getVideoProvider, getEcomProvider, getScraperProvide
 // Note: health tracking is done centrally in /api/scraping/fetch after
 // each wrapper returns. Keeps the wrappers pure.
 
-// Per-source fetch caps. PAWEN_CHEAP_SCRAPE=1 trims them so a fresh
-// excavation stays under ~€2 of BrightData spend (target ~300 items
-// per active source). Defaults preserve the previous high-recall
-// behavior — the flag must be explicitly set on the worker env.
-const CHEAP = process.env.PAWEN_CHEAP_SCRAPE === '1';
-const CAPS = CHEAP
+// Per-source fetch caps. CHEAP mode is now the DEFAULT — keeps a fresh
+// excavation under ~€2 of BrightData spend (target ~300 items per
+// active source). To opt back into the previous high-recall behavior,
+// set PAWEN_DEEP_SCRAPE=1 on the worker env.
+const DEEP = process.env.PAWEN_DEEP_SCRAPE === '1';
+const CAPS = DEEP
   ? {
-      reddit:  { queries: 3, maxThreads: 6,  maxComments: 25 },
-      quora:   { queries: 3, maxThreads: 5,  maxComments: 20 },
-      youtube: { queries: 3, maxVideos: 4,   maxComments: 25 },
-      tiktok:  { queries: 4, maxVideos: 4,   maxComments: 15 },
-      amazon:  { queries: 3, maxProducts: 4, maxReviews: 25 },
-    }
-  : {
       reddit:  { queries: 4, maxThreads: 15, maxComments: 40 },
       quora:   { queries: 6, maxThreads: 15, maxComments: 20 },
       youtube: { queries: 6, maxVideos: 8,   maxComments: 80 },
       tiktok:  { queries: 6, maxVideos: 12,  maxComments: 30 },
       amazon:  { queries: 4, maxProducts: 5, maxReviews: 40 },
+    }
+  : {
+      reddit:  { queries: 3, maxThreads: 6,  maxComments: 25 },
+      quora:   { queries: 3, maxThreads: 5,  maxComments: 20 },
+      youtube: { queries: 3, maxVideos: 4,   maxComments: 25 },
+      tiktok:  { queries: 4, maxVideos: 4,   maxComments: 15 },
+      amazon:  { queries: 3, maxProducts: 4, maxReviews: 25 },
     };
-if (CHEAP) {
-  console.info('[fetchWrappers] PAWEN_CHEAP_SCRAPE=1 — using reduced source caps:', CAPS);
-}
+console.info(`[fetchWrappers] mode=${DEEP ? 'DEEP' : 'CHEAP'} caps=`, CAPS);
 
 function toRaw(source: RawSourceItem['source'], r: { url: string; title?: string; content: string; comments?: Array<{ text: string }>; metadata?: Record<string, unknown> }): RawSourceItem {
   return {
