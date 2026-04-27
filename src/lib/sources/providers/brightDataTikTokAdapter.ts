@@ -65,12 +65,22 @@ export class BrightDataTikTokAdapter implements VideoProvider {
       discoverBy = 'keyword';
     }
 
-    const postRows = await brightDataCollect<TikTokPostRow>({
-      providerId: this.id,
-      datasetId: postsId,
-      inputs,
-      discoverBy,
-    });
+    let postRows: TikTokPostRow[];
+    try {
+      postRows = await brightDataCollect<TikTokPostRow>({
+        providerId: this.id,
+        datasetId: postsId,
+        inputs,
+        discoverBy,
+      });
+    } catch (e) {
+      // Same reasoning as Reddit: re-throw enriched ProviderError so the
+      // wrapper surfaces "BrightData ... HTTP 402" instead of "0 items".
+      // brightDataCollect already recorded the failure in the health cache.
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[brightdata-tiktok] posts fetch failed (mode=${opts.mode ?? 'search'}): ${msg}`);
+      throw e;
+    }
 
     const videos: VideoResult[] = [];
     for (const r of postRows.slice(0, maxVideos)) {

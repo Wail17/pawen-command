@@ -76,12 +76,25 @@ export class BrightDataRedditAdapter implements SocialProvider {
       discoverBy = 'keyword';
     }
 
-    const postRows = await brightDataCollect<RedditPostRow>({
-      providerId: this.id,
-      datasetId: postsId,
-      inputs: triggers,
-      discoverBy,
-    });
+    let postRows: RedditPostRow[];
+    try {
+      postRows = await brightDataCollect<RedditPostRow>({
+        providerId: this.id,
+        datasetId: postsId,
+        inputs: triggers,
+        discoverBy,
+      });
+    } catch (e) {
+      // Posts dataset throws on quota exhaustion (402), bad input shape (4xx),
+      // or trigger network drops. Re-throw with the enriched message so the
+      // wrapper records the real error in RawSourceData.error instead of a
+      // generic "0 items returned". brightDataCollect already populated the
+      // health cache via recordBrightDataFailure() so subsequent calls fall
+      // back to RedditOAuthAdapter.
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[brightdata-reddit] posts fetch failed: ${msg}`);
+      throw e;
+    }
 
     const posts: SocialResult[] = [];
     for (const r of postRows.slice(0, limit)) {
