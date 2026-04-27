@@ -1,0 +1,12 @@
+import { neon } from '@neondatabase/serverless';
+const sql = neon(process.env.DATABASE_URL);
+const id = process.argv[2];
+const [r] = await sql`SELECT result FROM pipeline_jobs WHERE id = ${id}`;
+const arr = r.result?.avatarRunResult ?? r.result;
+const meta = arr?.metadata ?? {};
+console.log('full metadata:', JSON.stringify(meta, null, 2));
+const rs = arr?.raw_signal ?? {};
+console.log('\nraw_signal keys:', Object.keys(rs).join(', '));
+if (rs.source_meta) console.log('source_meta:', JSON.stringify(rs.source_meta, null, 2));
+if (rs.totals) console.log('totals:', JSON.stringify(rs.totals));
+if (rs.item_counts) console.log('item_counts:', JSON.stringify(rs.item_counts));
