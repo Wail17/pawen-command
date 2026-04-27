@@ -1,27 +1,21 @@
 // ============================================================
-// PAWEN — Inngest webhook endpoint
+// PAWEN — Inngest webhook endpoint (drained — CONNECT-only mode)
 //
-// Inngest's cloud control plane invokes this URL to:
-//   - PUT  /api/inngest    — register/sync our function definitions
-//   - POST /api/inngest    — execute a step run (one HTTP call per step)
-//   - GET  /api/inngest    — health probe
-//
-// `serve()` handles signature verification (INNGEST_SIGNING_KEY).
-// Each POST runs ONE step from the function — that's what gives us
-// fresh function-duration budget per step.
+// All Pawen Inngest functions now live on the long-running Railway
+// worker (`worker/index.ts`) which uses `connect()` over WebSocket.
+// We keep this route around so Inngest's HTTP control plane can still
+// PUT-sync the app (zero functions registered here) and so existing
+// inbound webhook URLs don't 404 — but no functions execute on Vercel
+// anymore, eliminating the 800s function-duration cap that was
+// killing rich-niche compile passes.
 // ============================================================
 
 import { serve } from 'inngest/next';
 import { inngest } from '@/lib/inngest/client';
-import { avatarExcavationFn } from '@/lib/inngest/functions/avatarExcavation';
-import { zombieReaperFn } from '@/lib/inngest/functions/zombieReaper';
 
-// Each step gets the full Vercel Pro maxDuration. Most steps run far
-// shorter (LLM phases ~120-180s) but the fetch step on rich niches
-// can push 540s with Reddit posts + comments serial.
-export const maxDuration = 800;
+export const maxDuration = 60;
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [avatarExcavationFn, zombieReaperFn],
+  functions: [],
 });
