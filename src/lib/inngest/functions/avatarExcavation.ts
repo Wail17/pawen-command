@@ -45,7 +45,7 @@ async function withHeartbeat<T>(jobId: string, fn: () => Promise<T>): Promise<T>
   }
 }
 import { wrapStepOutput, unwrapStepOutput, type StepOutputHandle } from '@/lib/blob/excavationBlob';
-import { getCachedFetch, buildCacheKey } from '@/lib/avatars/excavationCache';
+import { getCachedFetch, putCachedFetch, buildCacheKey } from '@/lib/avatars/excavationCache';
 import type {
   CoreAvatarInput,
   SourceConfig,
@@ -153,6 +153,13 @@ export const avatarExcavationFn = inngest.createFunction(
         if (totalItems === 0) {
           throw new Error('Phase 2 fetch returned 0 items — every BD source empty/failed');
         }
+        // Persist the fetch in excavation_fetch_cache BEFORE handing back
+        // to Inngest. Protects against retries (function-level retries, or
+        // a manual replay with the same inputs) re-burning BD credit on
+        // the same product/niche/lang. Failures swallowed — cache is best-
+        // effort and the run already has fetchData in memory anyway.
+        const inputsSummary = `${(core.product ?? '').slice(0, 80)} | ${(core.niche ?? '').slice(0, 80)} | ${core.language ?? ''}`;
+        await putCachedFetch(cacheKey, fetchData, inputsSummary);
         return await wrapStepOutput(jobId, 'discover-and-fetch', fetchData);
       });
     }));
