@@ -167,7 +167,18 @@ export const avatarExcavationFn = inngest.createFunction(
     // Opus compile, adversarial (skipped via env), classifier.
     // ~3-5 min typical; gets its own fresh 800s budget.
     // ────────────────────────────────────────────────────────────────
-    const finalResult = await step.run('analyze-and-compile', async () => withHeartbeat(jobId, async () => {
+    // Step 3 result is intentionally a small handle, not the whole
+    // avatarRunResult. Reason: avatarRunResult + rawText can run 0.5-2MB
+    // depending on niche richness. Returning that as a step.run output
+    // has bitten us repeatedly — Inngest's step result wire format
+    // throws (or silently truncates → retry from scratch) on big
+    // payloads, which threw away successful $0.50 compiles three runs
+    // in a row today. The persistent fix: save the full result to the
+    // pipeline_jobs row INSIDE step 3 the moment runAvatarExcavation
+    // returns, BEFORE handing anything back to Inngest. Whatever
+    // happens after that point — Inngest crash, network drop, retry
+    // explosion — the DB already has the answer.
+    const finalSummary = await step.run('analyze-and-compile', async () => withHeartbeat(jobId, async () => {
       ensureFetchPatched();
       return await withInternalContext({ baseUrl, sessionCookie }, async () => {
         await markPhase(jobId, 'analyzing', 'Phase 3: launching parallel source analyzers');
@@ -185,31 +196,66 @@ export const avatarExcavationFn = inngest.createFunction(
         if (result.error || !result.result) {
           throw new Error(result.error ?? 'Excavation analyze stage returned no result');
         }
-        return {
-          avatarRunResult: result.result as AvatarRunResult,
-          rawText: result.rawText,
-          totalTokens: result.totalTokens,
-        };
+
+        const avatarRunResult = result.result as AvatarRunResult;
+        const subAvatarCount = avatarRunResult.sub_avatars.length;
+        const verbatimCount = avatarRunResult.metadata.total_verbatims;
+
+        // PERSIST FIRST — this writes status=completed + the full result
+        // payload to pipeline_jobs synchronously. If markCompleted itself
+        // throws (DB outage, schema mismatch), we WANT Inngest to retry
+        // — but the retry would overwrite a half-written row, which is
+        // safe because markCompleted is a single atomic UPDATE.
+        try {
+          await markCompleted(
+            jobId,
+            {
+              avatarRunResult,
+              rawText: result.rawText,
+              totalTokens: result.totalTokens,
+            },
+            `Done — ${subAvatarCount} sub-avatars, ${verbatimCount} verbatims`,
+          );
+          logger.info(`[avatar-excavation:${jobId}] persisted result inline (${subAvatarCount} sub-avatars, ${verbatimCount} verbatims)`);
+        } catch (err) {
+          logger.error(`[avatar-excavation:${jobId}] markCompleted threw (will retry):`, err);
+          throw err; // surface to Inngest so the step retries
+        }
+
+        // Tiny return — Inngest's step output wire format won't choke
+        // on this. Step 4 below double-checks the DB row is in fact
+        // completed (idempotent no-op if so).
+        return { ok: true as const, subAvatarCount, verbatimCount };
       });
     }));
 
     // ────────────────────────────────────────────────────────────────
-    // STEP 4 — FINALIZE: persist final result on the job row.
+    // STEP 4 — FINALIZE (idempotent safety net).
+    // Step 3 already wrote status='completed' + result. This step is
+    // a guard rail: if for any reason that didn't stick (it should, but
+    // belt-and-suspenders), re-stamp the message so the UI shows fresh
+    // "done" state. No-op when the job is already completed.
     // ────────────────────────────────────────────────────────────────
     await step.run('finalize-job', async () => {
-      const subAvatarCount = finalResult.avatarRunResult.sub_avatars.length;
-      const verbatimCount = finalResult.avatarRunResult.metadata.total_verbatims;
-      await markCompleted(
+      const sql = getSql();
+      const rows = await sql`SELECT status FROM pipeline_jobs WHERE id = ${jobId}` as Array<{ status: string }>;
+      if (rows[0]?.status === 'completed') {
+        // Already finalized in step 3 — nothing to do.
+        return;
+      }
+      // Step 3 didn't persist (shouldn't happen, but recover gracefully).
+      logger.warn(`[avatar-excavation:${jobId}] finalize-job: status=${rows[0]?.status ?? 'unknown'} — step 3 didn't mark completed`);
+      await markPhase(
         jobId,
-        finalResult,
-        `Done — ${subAvatarCount} sub-avatars, ${verbatimCount} verbatims`,
+        'done',
+        `Done — ${finalSummary.subAvatarCount} sub-avatars, ${finalSummary.verbatimCount} verbatims`,
       );
     });
 
     return {
       ok: true,
       jobId,
-      subAvatars: finalResult.avatarRunResult.sub_avatars.length,
+      subAvatars: finalSummary.subAvatarCount,
     };
   },
 );
