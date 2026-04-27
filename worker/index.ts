@@ -48,7 +48,7 @@ process.env.INNGEST_LOG_LEVEL = process.env.INNGEST_LOG_LEVEL ?? 'debug';
 
 import { connect } from 'inngest/connect';
 import type { Inngest } from 'inngest';
-import { inngest } from '../src/lib/inngest/client';
+import { workerInngest } from './inngest-client';
 import { avatarExcavationFn } from '../src/lib/inngest/functions/avatarExcavation';
 import { zombieReaperFn } from '../src/lib/inngest/functions/zombieReaper';
 
@@ -66,14 +66,14 @@ console.log(`  INNGEST_SIGNING_KEY  = ${mask(process.env.INNGEST_SIGNING_KEY)}`)
 console.log(`  INNGEST_BASE_URL     = ${process.env.INNGEST_BASE_URL ?? '(default)'}`);
 console.log(`  INNGEST_DEV          = ${process.env.INNGEST_DEV ?? '(unset)'}`);
 console.log(`  INNGEST_LOG_LEVEL    = ${process.env.INNGEST_LOG_LEVEL}`);
-console.log(`  app id               = ${(inngest as unknown as { id?: string }).id ?? '(unknown)'}`);
+console.log(`  app id               = ${(workerInngest as unknown as { id?: string }).id ?? '(unknown)'}`);
 
 let connection;
 try {
   connection = await connect({
     apps: [
       {
-        client: inngest as unknown as Inngest.Any,
+        client: workerInngest as unknown as Inngest.Any,
         functions: [avatarExcavationFn, zombieReaperFn],
       },
     ],
