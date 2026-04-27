@@ -15,6 +15,30 @@ import { getSocialProvider, getVideoProvider, getEcomProvider, getScraperProvide
 // Note: health tracking is done centrally in /api/scraping/fetch after
 // each wrapper returns. Keeps the wrappers pure.
 
+// Per-source fetch caps. PAWEN_CHEAP_SCRAPE=1 trims them so a fresh
+// excavation stays under ~€2 of BrightData spend (target ~300 items
+// per active source). Defaults preserve the previous high-recall
+// behavior — the flag must be explicitly set on the worker env.
+const CHEAP = process.env.PAWEN_CHEAP_SCRAPE === '1';
+const CAPS = CHEAP
+  ? {
+      reddit:  { queries: 3, maxThreads: 6,  maxComments: 25 },
+      quora:   { queries: 3, maxThreads: 5,  maxComments: 20 },
+      youtube: { queries: 3, maxVideos: 4,   maxComments: 25 },
+      tiktok:  { queries: 4, maxVideos: 4,   maxComments: 15 },
+      amazon:  { queries: 3, maxProducts: 4, maxReviews: 25 },
+    }
+  : {
+      reddit:  { queries: 4, maxThreads: 15, maxComments: 40 },
+      quora:   { queries: 6, maxThreads: 15, maxComments: 20 },
+      youtube: { queries: 6, maxVideos: 8,   maxComments: 80 },
+      tiktok:  { queries: 6, maxVideos: 12,  maxComments: 30 },
+      amazon:  { queries: 4, maxProducts: 5, maxReviews: 40 },
+    };
+if (CHEAP) {
+  console.info('[fetchWrappers] PAWEN_CHEAP_SCRAPE=1 — using reduced source caps:', CAPS);
+}
+
 function toRaw(source: RawSourceItem['source'], r: { url: string; title?: string; content: string; comments?: Array<{ text: string }>; metadata?: Record<string, unknown> }): RawSourceItem {
   return {
     source,
@@ -104,13 +128,13 @@ export async function fetchRedditViaProviders(
   }
 
   let lastError: string | null = null;
-  for (const q of queries.slice(0, 4)) {
+  for (const q of queries.slice(0, CAPS.reddit.queries)) {
     queriesUsed.push(q);
     try {
       const results = await provider.fetch(q, {
         platform: 'reddit',
-        maxThreads: 15,
-        maxCommentsPerThread: 40,
+        maxThreads: CAPS.reddit.maxThreads,
+        maxCommentsPerThread: CAPS.reddit.maxComments,
         subreddits: subs,
         deepComments: true,
         language,
@@ -141,7 +165,7 @@ export async function fetchQuoraViaProviders(
   language: string,
 ): Promise<RawSourceData> {
   const start = Date.now();
-  const queries = (plan.queries ?? []).slice(0, 6);
+  const queries = (plan.queries ?? []).slice(0, CAPS.quora.queries);
   const queriesUsed: string[] = [];
   const out: RawSourceItem[] = [];
   const seen = new Set<string>();
@@ -163,8 +187,8 @@ export async function fetchQuoraViaProviders(
     try {
       const results = await provider.fetch(q, {
         platform: 'quora',
-        maxThreads: 15,
-        maxCommentsPerThread: 20,
+        maxThreads: CAPS.quora.maxThreads,
+        maxCommentsPerThread: CAPS.quora.maxComments,
         language,
       });
       for (const r of results) {
@@ -193,7 +217,7 @@ export async function fetchYoutubeViaProviders(
   language: string,
 ): Promise<RawSourceData> {
   const start = Date.now();
-  const queries = (plan.video_queries ?? []).slice(0, 6);
+  const queries = (plan.video_queries ?? []).slice(0, CAPS.youtube.queries);
   const queriesUsed: string[] = [];
   const out: RawSourceItem[] = [];
   const seen = new Set<string>();
@@ -214,7 +238,7 @@ export async function fetchYoutubeViaProviders(
     queriesUsed.push(q);
     try {
       const results = await provider.fetch(q, {
-        platform: 'youtube', mode: 'search', maxVideos: 8, maxCommentsPerVideo: 80, language,
+        platform: 'youtube', mode: 'search', maxVideos: CAPS.youtube.maxVideos, maxCommentsPerVideo: CAPS.youtube.maxComments, language,
       });
       for (const r of results) {
         if (seen.has(r.url)) continue;
@@ -242,8 +266,8 @@ export async function fetchTikTokViaProviders(
   language: string,
 ): Promise<RawSourceData> {
   const start = Date.now();
-  const queries = (plan.search_queries ?? []).slice(0, 6);
-  const hashtags = (plan.hashtags ?? []).slice(0, 4);
+  const queries = (plan.search_queries ?? []).slice(0, CAPS.tiktok.queries);
+  const hashtags = (plan.hashtags ?? []).slice(0, Math.min(4, CAPS.tiktok.queries));
   const queriesUsed: string[] = [];
   const out: RawSourceItem[] = [];
   const seen = new Set<string>();
@@ -268,7 +292,7 @@ export async function fetchTikTokViaProviders(
     queriesUsed.push(p.mode === 'hashtag' ? `#${p.query}` : `search: ${p.query}`);
     try {
       const results = await provider.fetch(p.query, {
-        platform: 'tiktok', mode: p.mode, maxVideos: 12, maxCommentsPerVideo: 30, language,
+        platform: 'tiktok', mode: p.mode, maxVideos: CAPS.tiktok.maxVideos, maxCommentsPerVideo: CAPS.tiktok.maxComments, language,
       });
       for (const r of results) {
         if (seen.has(r.url)) continue;
@@ -295,7 +319,7 @@ export async function fetchAmazonViaProviders(
   plan: SourceDiscoveryPlan['amazon'],
 ): Promise<RawSourceData> {
   const start = Date.now();
-  const queries = (plan.product_queries ?? []).slice(0, 4);
+  const queries = (plan.product_queries ?? []).slice(0, CAPS.amazon.queries);
   const queriesUsed: string[] = [];
   const out: RawSourceItem[] = [];
   const seen = new Set<string>();
@@ -316,7 +340,7 @@ export async function fetchAmazonViaProviders(
     queriesUsed.push(q);
     try {
       const results = await provider.fetch(q, {
-        platform: 'amazon', marketplace: plan.marketplace ?? 'amazon.com', maxProducts: 5, maxReviewsPerProduct: 40,
+        platform: 'amazon', marketplace: plan.marketplace ?? 'amazon.com', maxProducts: CAPS.amazon.maxProducts, maxReviewsPerProduct: CAPS.amazon.maxReviews,
       });
       for (const r of results) {
         if (seen.has(r.url)) continue;
