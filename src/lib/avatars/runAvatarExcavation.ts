@@ -150,6 +150,33 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function callLLM(params: LLMCallParams): Promise<LLMCallResult> {
+  // Server-side path (Inngest worker on Railway): call Anthropic directly.
+  // Skips the Vercel /api/generate hop entirely — that hop was the source
+  // of the recurring "Pass 2 stuck" hangs (TCP socket left half-open when
+  // Vercel function was killed mid-request, worker's await fetch never
+  // settled, heartbeat ticker stalled, zombie reaper killed the job after
+  // 30 min). Anthropic's own retry policy + AbortSignal.timeout in
+  // callAnthropicDirect bound the worst-case duration to ~12 min per call.
+  if (typeof window === 'undefined') {
+    const { callAnthropicDirect } = await import('../ai/anthropicDirect');
+    const result = await callAnthropicDirect({
+      model: params.model,
+      systemPrompt: params.systemPrompt,
+      systemPrefix: params.systemPrefix,
+      userMessage: params.userMessage,
+      temperature: params.temperature ?? 0.5,
+      maxTokens: params.maxTokens ?? 8192,
+      cacheControl: true,
+    });
+    return {
+      content: result.content,
+      tokensUsed: result.tokensUsed,
+    };
+  }
+
+  // Browser-side path: fetch /api/generate. Used by gates 2-9 which still
+  // run from IndexedDB-driven client code. AbortSignal.timeout caps the
+  // hang case here too, mirroring the worker's behaviour.
   let lastErr: unknown = null;
   let timeoutAttempts = 0;
 
@@ -168,6 +195,7 @@ async function callLLM(params: LLMCallParams): Promise<LLMCallResult> {
           cacheControl: true,
           stream: false,
         }),
+        signal: AbortSignal.timeout(900_000),
       });
 
       if (res.ok) {
@@ -182,13 +210,9 @@ async function callLLM(params: LLMCallParams): Promise<LLMCallResult> {
       const msg: string = err.message || `LLM call failed with status ${res.status}`;
       const isRateLimit = res.status === 429 || /rate limit|exceed your organization/i.test(msg);
       const isOverloaded = res.status === 529 || res.status === 503;
-      // 500 errors here are almost always AbortSignal.timeout from /api/generate
-      // (the model took too long). Retrying 3 more times = 15+ min wasted.
       const isServerError = res.status >= 500 && !isOverloaded;
 
       if ((isRateLimit || isOverloaded) && attempt < MAX_LLM_RETRIES - 1) {
-        // Rate limit window is 1 minute. Wait long enough to drain the bucket.
-        // Backoff: 35s, 65s, 95s.
         const waitMs = 35_000 + attempt * 30_000;
         await sleep(waitMs);
         continue;
@@ -203,7 +227,6 @@ async function callLLM(params: LLMCallParams): Promise<LLMCallResult> {
       throw new Error(msg);
     } catch (e) {
       lastErr = e;
-      // True network errors (fetch threw before getting a response) get 1 retry max.
       if (timeoutAttempts < MAX_TIMEOUT_RETRIES) {
         timeoutAttempts++;
         await sleep(2_000);
