@@ -11,7 +11,7 @@ FROM node:22-alpine AS base
 WORKDIR /app
 
 # Source needed for the bundle
-COPY worker/package.json worker/tsconfig.json worker/index.ts worker/build.mjs ./worker/
+COPY worker/package.json worker/tsconfig.json worker/index.ts worker/inngest-client.ts worker/build.mjs ./worker/
 COPY worker/stubs ./worker/stubs
 COPY src ./src
 
