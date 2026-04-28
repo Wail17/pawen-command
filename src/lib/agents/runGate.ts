@@ -858,12 +858,13 @@ Respond in valid JSON with this structure:
       // Re-generate with Léa's feedback (if not last iteration)
       if (i < maxReviewIterations - 1) {
         onStatusChange?.('director_revision');
-        genResult = await callAPI(
-          '/api/generate',
-          {
-            model: generatorModel.model,
-            systemPrompt,
-            userMessage: `${userMsg}
+        try {
+          genResult = await callAPI(
+            '/api/generate',
+            {
+              model: generatorModel.model,
+              systemPrompt,
+              userMessage: `${userMsg}
 
 === 👑 DIRECTOR FEEDBACK FROM LÉA (address ALL of these issues) ===
 ${reviewResult!.feedback}
@@ -873,34 +874,51 @@ ${reviewResult!.dimensions?.map((d: { name: string; score: number; maxScore: num
 ).join('\n') || ''}
 
 Léa is watching. Fix EVERY issue she flagged. She WILL check again.`,
-            temperature: 0.7,
-            maxTokens: config.generatorMaxTokens ?? generatorModel.maxTokens,
-            cacheControl: true,
-          },
-          onStreamChunk,
-          !!onStreamChunk,
-        );
+              temperature: 0.7,
+              maxTokens: config.generatorMaxTokens ?? generatorModel.maxTokens,
+              cacheControl: true,
+            },
+            onStreamChunk,
+            !!onStreamChunk,
+          );
 
-        addTokens(genResult.tokensUsed);
-        addLog({
-          agent: 'lead',
-          model: generatorModel.model,
-          iteration: i + 2,
-          input_summary: `Re-generation with Léa's feedback (iteration ${i + 2})`,
-          output_summary: genResult.content.slice(0, 200) + '...',
-          raw_output: genResult.content,
-          tokens_used: genResult.tokensUsed,
-        });
-
-        // ABORT: if lead compiler returns 0 output tokens, it froze (too much to emit).
-        // Retrying costs ~$1.20 per attempt and will freeze again. Break and keep best.
-        if ((genResult.tokensUsed?.output ?? 0) === 0) {
+          addTokens(genResult.tokensUsed);
           addLog({
             agent: 'lead',
             model: generatorModel.model,
             iteration: i + 2,
-            input_summary: 'Circuit breaker — 0 output tokens (compiler froze)',
-            output_summary: 'Skipping further retries to avoid burning tokens. Keeping best prior output.',
+            input_summary: `Re-generation with Léa's feedback (iteration ${i + 2})`,
+            output_summary: genResult.content.slice(0, 200) + '...',
+            raw_output: genResult.content,
+            tokens_used: genResult.tokensUsed,
+          });
+
+          // ABORT: if lead compiler returns 0 output tokens, it froze (too much to emit).
+          // Retrying costs ~$1.20 per attempt and will freeze again. Break and keep best.
+          if ((genResult.tokensUsed?.output ?? 0) === 0) {
+            addLog({
+              agent: 'lead',
+              model: generatorModel.model,
+              iteration: i + 2,
+              input_summary: 'Circuit breaker — 0 output tokens (compiler froze)',
+              output_summary: 'Skipping further retries to avoid burning tokens. Keeping best prior output.',
+            });
+            genResult = { content: bestOutput, tokensUsed: { input: 0, output: 0 } };
+            break;
+          }
+        } catch (regenErr) {
+          // Re-generation crashed (Vercel function timeout, JSON parse on
+          // non-JSON error body, network drop, etc.). Without this catch the
+          // whole runGate aborts and the iter-1 output the user just paid for
+          // is thrown away. Log the failure, keep bestOutput, and exit the
+          // review loop cleanly so the page-level save still happens.
+          const msg = regenErr instanceof Error ? regenErr.message : String(regenErr);
+          addLog({
+            agent: 'lead',
+            model: generatorModel.model,
+            iteration: i + 2,
+            input_summary: 'Re-generation failed — keeping best prior output',
+            output_summary: msg.slice(0, 300),
           });
           genResult = { content: bestOutput, tokensUsed: { input: 0, output: 0 } };
           break;
