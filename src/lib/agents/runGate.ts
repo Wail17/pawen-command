@@ -76,8 +76,25 @@ async function callAPI(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'API call failed');
+    // Vercel function timeouts and platform errors return plain text
+    // ("An error occurred while running this app..."), not JSON. Guard
+    // the parse so the error message reaching the user is the actual
+    // failure (HTTP status + body excerpt) instead of "Unexpected token A...
+    // is not valid JSON" which masks the real cause.
+    const ct = response.headers.get('content-type') ?? '';
+    let detail = `HTTP ${response.status}`;
+    try {
+      if (ct.includes('application/json')) {
+        const j = await response.json();
+        detail = j?.message || j?.error || detail;
+      } else {
+        const t = await response.text();
+        detail = `${detail}: ${t.slice(0, 200)}`;
+      }
+    } catch {
+      // Body unreadable — keep status-only detail.
+    }
+    throw new Error(`${endpoint} failed — ${detail}`);
   }
 
   if (stream && onStreamChunk) {
