@@ -15,27 +15,44 @@ import { useState, useCallback, createContext, useContext } from 'react';
 // level; any nested <InlineTranslate> will pick it up.
 export const TranslateCtx = createContext<string | null>(null);
 
-export function shouldOfferTranslation(lang: string | null | undefined): boolean {
+export function shouldOfferTranslation(
+  lang: string | null | undefined,
+  targetLang: string = 'French',
+): boolean {
   if (!lang) return false;
   const n = lang.trim().toLowerCase();
   if (!n) return false;
-  return !['english', 'en', 'en-us', 'en-gb'].includes(n);
+  // Don't offer translation if source already matches the target language.
+  // Map common forms: 'fr', 'fr-FR' → French; 'en', 'en-US' → English; etc.
+  const targetMap: Record<string, string[]> = {
+    french:  ['french',  'fr', 'fr-fr', 'fr-be', 'fr-ca'],
+    english: ['english', 'en', 'en-us', 'en-gb'],
+    spanish: ['spanish', 'es', 'es-es', 'es-mx'],
+    italian: ['italian', 'it', 'it-it'],
+    german:  ['german',  'de', 'de-de'],
+  };
+  const targetForms = targetMap[targetLang.toLowerCase()] ?? [targetLang.toLowerCase()];
+  return !targetForms.includes(n);
 }
 
 // Auto-suppressing variant: renders nothing if the source language is
-// English or if the text is numeric/too short to bother.
+// already the user's preferred display language, or if the text is
+// numeric/too short to bother. Default target = French (most pawen users
+// are French-speaking); override per-call via `targetLanguage` prop.
 export function InlineTranslate({
   text,
   size = 'sm',
+  targetLanguage = 'French',
 }: {
   text: string;
   size?: 'sm' | 'md';
+  targetLanguage?: string;
 }) {
   const lang = useContext(TranslateCtx);
-  if (!shouldOfferTranslation(lang)) return null;
+  if (!shouldOfferTranslation(lang, targetLanguage)) return null;
   if (!text || text.trim().length < 4) return null;
   if (/^[\d\s.,%$€£¥-]+$/.test(text)) return null;
-  return <TranslateToggle text={text} targetLanguage="English" size={size} />;
+  return <TranslateToggle text={text} targetLanguage={targetLanguage} size={size} />;
 }
 
 interface TranslateToggleProps {

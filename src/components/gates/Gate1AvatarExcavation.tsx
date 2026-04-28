@@ -2145,9 +2145,11 @@ function SubAvatarCard({
           )}
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-text-primary">{sa.name}</div>
+            <InlineTranslate text={sa.name} />
             <div className="text-xs text-text-muted">
               {sa.nickname} · dominant: {sa.dominant_category} · urgency {sa.urgency_score}/10
             </div>
+            {sa.nickname && <InlineTranslate text={sa.nickname} />}
             {(sa.recommended_awareness_level || sa.market_sophistication) && (
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {sa.recommended_awareness_level && (
@@ -2232,6 +2234,7 @@ function SubAvatarCard({
             />
           )}
           <p className="text-text-secondary">{sa.description}</p>
+          <InlineTranslate text={sa.description} size="md" />
 
           {isMissingClassification && (
             <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/5 flex items-center justify-between gap-3">
