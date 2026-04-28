@@ -60,20 +60,28 @@ export default function GatePage() {
     const sa = p?.selectedSubAvatarId;
     let existing = p ? await getGateOutput(projectId, gateId, sa) : undefined;
 
-    if (!p || !existing) {
-      const boot = await fetchBootstrap();
-      if (boot) {
-        const serverProject = boot.projects.find((sp) => sp && typeof sp === 'object' && (sp as { id?: string }).id === projectId);
-        if (serverProject) await restoreProject(serverProject as Project);
-        for (const g of boot.gateOutputs) {
-          if (g && typeof g === 'object' && (g as { projectId?: string }).projectId === projectId) {
-            await restoreGateOutput(g);
-          }
+    // Always pull bootstrap. Restores when local is missing OR when server
+    // has newer updatedAt (e.g. a fresh excavation just completed). The old
+    // gate `if (!p || !existing)` skipped restore once the user had ANY local
+    // data — even stale.
+    const boot = await fetchBootstrap();
+    if (boot) {
+      const serverProject = boot.projects.find((sp) => sp && typeof sp === 'object' && (sp as { id?: string }).id === projectId);
+      if (serverProject) {
+        const sTs = (() => { const v = (serverProject as unknown as Record<string, unknown>).updatedAt; return typeof v === 'string' ? new Date(v).getTime() : 0; })();
+        const lTs = (() => { const v = p?.updatedAt; return typeof v === 'string' ? new Date(v).getTime() : 0; })();
+        if (!p || sTs > lTs) {
+          await restoreProject(serverProject as Project);
         }
-        p = await getProject(projectId);
-        const sa2 = p?.selectedSubAvatarId;
-        existing = p ? await getGateOutput(projectId, gateId, sa2) : undefined;
       }
+      for (const g of boot.gateOutputs) {
+        if (g && typeof g === 'object' && (g as { projectId?: string }).projectId === projectId) {
+          await restoreGateOutput(g);
+        }
+      }
+      p = await getProject(projectId);
+      const sa2 = p?.selectedSubAvatarId;
+      existing = p ? await getGateOutput(projectId, gateId, sa2) : undefined;
     }
 
     if (!p) { router.push('/'); return; }

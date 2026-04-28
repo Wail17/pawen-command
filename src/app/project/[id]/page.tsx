@@ -119,21 +119,29 @@ export default function ProjectPage() {
         const id = params.id as string;
         if (!id) { router.push('/'); return; }
         let p = await getProject(id);
-        // Deep-link hydration: if local is missing or the project has no gate outputs,
-        // pull from server mirror so the user sees real state instead of an empty shell.
-        const needsHydration = !p || !p.avatarRunResult || Object.keys(p.gateStatuses ?? {}).length === 0;
-        if (needsHydration) {
-          const boot = await fetchBootstrap();
-          if (boot) {
-            const serverProject = boot.projects.find((sp) => sp && typeof sp === 'object' && (sp as { id?: string }).id === id);
-            if (serverProject) await restoreProject(serverProject as Project);
-            for (const g of boot.gateOutputs) {
-              if (g && typeof g === 'object' && (g as { projectId?: string }).projectId === id) {
-                await restoreGateOutput(g);
-              }
+        // Always pull server mirror on deep link. Restores on three triggers:
+        //   1. Local missing entirely (empty shell deep-link).
+        //   2. Server has newer updatedAt (a fresh excavation just landed).
+        //   3. Local has no gate outputs (rebuild from mirror).
+        // Without (2), the user runs a new excavation, the worker writes to
+        // the mirror, but reopening the project keeps showing the stale local
+        // copy — exactly what bit suley on the morning Avatar Ménaupose run.
+        const boot = await fetchBootstrap();
+        if (boot) {
+          const serverProject = boot.projects.find((sp) => sp && typeof sp === 'object' && (sp as { id?: string }).id === id);
+          if (serverProject) {
+            const sTs = (() => { const v = (serverProject as unknown as Record<string, unknown>).updatedAt; return typeof v === 'string' ? new Date(v).getTime() : 0; })();
+            const lTs = (() => { const v = p?.updatedAt; return typeof v === 'string' ? new Date(v).getTime() : 0; })();
+            if (!p || sTs > lTs) {
+              await restoreProject(serverProject as Project);
             }
-            p = await getProject(id);
           }
+          for (const g of boot.gateOutputs) {
+            if (g && typeof g === 'object' && (g as { projectId?: string }).projectId === id) {
+              await restoreGateOutput(g);
+            }
+          }
+          p = await getProject(id);
         }
         if (!p) { router.push('/'); return; }
         setProject(p);

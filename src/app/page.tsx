@@ -84,11 +84,28 @@ export default function Dashboard() {
           return subCount * 10 + approved * 5;
         };
 
+        // updatedAt as a tiebreaker — when content scores match (e.g. a
+        // re-run that produces the same N sub-avatars), the freshly
+        // synced server version should still replace the stale local
+        // copy. Without this, the user runs a new excavation, the worker
+        // writes to the mirror, but the bootstrap keeps showing the old
+        // avatarRunResult because contentScore is unchanged.
+        const updatedTs = (p: unknown): number => {
+          if (!p || typeof p !== 'object') return 0;
+          const v = (p as Record<string, unknown>).updatedAt;
+          return typeof v === 'string' ? new Date(v).getTime() : 0;
+        };
+
         for (const p of boot.projects) {
           if (!p || typeof p !== 'object' || !('id' in p)) continue;
           const id = String((p as unknown as Record<string, unknown>).id);
           const localP = localById.get(id);
-          if (!localP || contentScore(p) > contentScore(localP)) {
+          const serverScore = contentScore(p);
+          const localScore = contentScore(localP);
+          const serverWinsOnContent = !localP || serverScore > localScore;
+          const serverWinsOnTie =
+            !!localP && serverScore === localScore && updatedTs(p) > updatedTs(localP);
+          if (serverWinsOnContent || serverWinsOnTie) {
             await restoreProject(p as Project);
           }
         }
