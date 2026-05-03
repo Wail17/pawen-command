@@ -19,6 +19,9 @@ export default function BrandDNAPage() {
   const [editJson, setEditJson] = useState('');
   const [loading, setLoading] = useState(true);
   const [compiling, setCompiling] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     const p = await getProject(projectId);
@@ -368,6 +371,134 @@ IMPORTANT: Use REAL product name, REAL price, and REAL review quotes in the Bran
     setDna(unlocked);
   }, [project, dna]);
 
+  // ======================================================================
+  // Upload PDF / Markdown / .txt → extract text → /api/context/import →
+  // populated BrandDNA → save to project (unlocked, user reviews then locks).
+  // Mirrors the import-context flow but scoped to Brand DNA only — used when
+  // the user already has a brand brief / pitch deck / founder memo and wants
+  // to skip the gate compile path.
+  // ======================================================================
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!project) return;
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+    setUploadStatus(`Extracting "${file.name}"…`);
+
+    try {
+      // Step 1: extract text via /api/extract/file (handles PDF + .md + .txt)
+      const extractForm = new FormData();
+      extractForm.append('file', file);
+      const extractRes = await fetch('/api/extract/file', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: extractForm,
+      });
+      const extractJson = await extractRes.json().catch(() => ({}));
+      if (!extractRes.ok || !extractJson.ok) {
+        throw new Error(extractJson.message ?? `extract failed (${extractRes.status})`);
+      }
+      const extractedText: string = extractJson.text;
+      const charCount: number = extractJson.charCount;
+      const pageCount: number | undefined = extractJson.pageCount;
+      setUploadStatus(`Extracted ${charCount.toLocaleString()} chars${pageCount ? ` from ${pageCount} pages` : ''}. Parsing into Brand DNA…`);
+
+      // Step 2: feed the extracted text to the existing /api/context/import
+      // pipeline which already handles BrandDNA-shaped output.
+      const bundle = `=== ${file.name} ===\n${extractedText}`;
+      const importRes = await fetch('/api/context/import', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bundle,
+          hints: {
+            market: project.targetMarket || '',
+            language: project.targetLanguage || '',
+            product: project.productDescription || project.name || '',
+          },
+        }),
+      });
+      const importJson = await importRes.json().catch(() => ({}));
+      if (!importRes.ok || !importJson.ok || !importJson.parsed) {
+        throw new Error(importJson.message ?? `parse failed (${importRes.status})`);
+      }
+
+      // Step 3: hydrate + save BrandDNA. We only care about brand_dna here
+      // (not core/sub_avatars — those belong to import-context's broader flow).
+      // Fill missing required fields with sane defaults so the UI doesn't
+      // crash on partial extractions.
+      const parsed = importJson.parsed.brand_dna ?? {};
+      const merged: BrandDNA = {
+        version: '1.0',
+        locked: false,
+        product_name: parsed.product_name ?? project.productDescription ?? project.name ?? '',
+        brand_name: parsed.brand_name ?? project.name ?? '',
+        target_market: parsed.target_market ?? project.targetMarket ?? '',
+        target_language: parsed.target_language ?? project.targetLanguage ?? '',
+        locked_terms: parsed.locked_terms ?? {
+          mechanism_name: '',
+          root_cause_one_sentence: '',
+          belief_error: '',
+          mechanism_3_steps: [],
+          product_descriptor: '',
+          key_proof_points: [],
+          guarantee_wording: '',
+        },
+        customer_language: parsed.customer_language ?? {
+          pain_quotes: [],
+          desire_quotes: [],
+          objection_quotes: [],
+          always_use: [],
+          never_use: [],
+          conditional_use: [],
+        },
+        emotional_arc: parsed.emotional_arc ?? {
+          primary_emotion: '',
+          secondary_emotion: '',
+          resolution_emotion: '',
+          funnel_arc: [],
+          awareness_progression: { ad_level: '', advertorial_journey: '', lp_level: '' },
+        },
+        voice_profile: parsed.voice_profile ?? {
+          vocabulary: [],
+          sentence_style: '',
+          formality_level: 5,
+          emotional_tone: '',
+          phrases_to_use: [],
+          phrases_to_avoid: [],
+          sample_paragraph: '',
+        },
+        visual_identity: parsed.visual_identity ?? {
+          metaphor: null,
+          color_associations: { problem: '', solution: '', brand: '' },
+          product_image_rules: [],
+        },
+        product_specs: parsed.product_specs,
+        proof_inventory: parsed.proof_inventory,
+        sub_avatars: parsed.sub_avatars ?? [],
+      };
+
+      const updated = { ...project, brandDNA: merged };
+      await saveProject(updated);
+      setProject(updated);
+      setDna(merged);
+      setEditJson(JSON.stringify(merged, null, 2));
+      setEditing(true);
+      setUploadStatus(`✓ Brand DNA built from ${file.name} — review the JSON below, edit if needed, then Lock to deploy.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[brand-dna upload]', msg);
+      setUploadError(msg);
+      setUploadStatus(null);
+    } finally {
+      setUploading(false);
+    }
+  }, [project]);
+
   if (loading || !project) {
     return (
       <div className="min-h-screen bg-bg-primary flex items-center justify-center">
@@ -397,11 +528,46 @@ IMPORTANT: Use REAL product name, REAL price, and REAL review quotes in the Bran
           </p>
         </div>
 
+        {/* Upload widget — always visible, both for first-build and
+            re-import. Accepts PDF/.md/.txt/.csv. */}
+        <div className="mb-6 p-5 border border-dashed border-border rounded-xl bg-bg-secondary/40">
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary mb-1">
+                📄 Import depuis un fichier (PDF / Markdown / Texte)
+              </h3>
+              <p className="text-xs text-text-secondary">
+                Brief de marque, pitch deck, mémo fondateur, transcript… extraction automatique → Brand DNA.
+              </p>
+            </div>
+            <label className={`px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer whitespace-nowrap ${uploading ? 'bg-bg-tertiary text-text-secondary cursor-wait' : 'bg-accent-blue text-white hover:bg-accent-blue/90'}`}>
+              {uploading ? 'Traitement…' : 'Choisir un fichier'}
+              <input
+                type="file"
+                accept=".pdf,.md,.markdown,.txt,.csv,application/pdf,text/markdown,text/plain"
+                onChange={handleFileUpload}
+                disabled={uploading}
+                className="hidden"
+              />
+            </label>
+          </div>
+          {uploadStatus && (
+            <p className="text-xs text-text-primary mt-2 px-3 py-2 bg-bg-tertiary/40 rounded-md">
+              {uploadStatus}
+            </p>
+          )}
+          {uploadError && (
+            <p className="text-xs text-error mt-2 px-3 py-2 bg-error/10 rounded-md">
+              ❌ {uploadError}
+            </p>
+          )}
+        </div>
+
         {/* No DNA yet */}
         {!dna && (
           <div className="text-center py-16">
             <p className="text-text-secondary mb-4">
-              Complete Gates 1, 2, and 3 to compile the Brand DNA.
+              Complete Gates 1, 2, and 3 to compile the Brand DNA — or import from a file above.
             </p>
             <button
               onClick={handleCompile}
