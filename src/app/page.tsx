@@ -14,8 +14,6 @@ import Link from 'next/link';
 // user list comes from /api/auth/users. Sessions are HttpOnly
 // cookies managed entirely server-side.
 
-type PickerUser = { name: string; role: 'admin' | 'user' | 'blocked' };
-
 const LANGUAGES = [
   { code: 'en-US', label: 'English (US)', market: 'United States' },
   { code: 'es-ES', label: 'Español (Spain)', market: 'Spain' },
@@ -51,13 +49,7 @@ export default function Dashboard() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
-  // Two-step login: (1) password, (2) pick-user. Password is held in
-  // state *only* until the picker submit, then cleared.
-  const [pendingPassword, setPendingPassword] = useState<string | null>(null);
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [pickerUsers, setPickerUsers] = useState<PickerUser[]>([]);
-  const [loggingIn, setLoggingIn] = useState(false);
+  // Login moved to /hive (sole entry point). This page only runs when authenticated.
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -194,74 +186,6 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [appUser]);
 
-  // Step 1: user enters password. We don't validate it yet — we fetch
-  // the user list from the server (which is gated behind the same
-  // APP_PASSWORD server-side) and move to the picker. The real password
-  // check happens on picker submit via /api/auth/login.
-  async function handlePasswordSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!password) return;
-    setAuthError(null);
-    setLoggingIn(true);
-    try {
-      // Fetch the user list. This endpoint does NOT require a session,
-      // but the login endpoint will reject if the password is wrong.
-      const res = await fetch('/api/auth/users', { credentials: 'same-origin' });
-      if (!res.ok) {
-        setAuthError('Could not load user list — is the server up?');
-        return;
-      }
-      const data = await res.json();
-      if (!data.ok || !Array.isArray(data.users) || data.users.length === 0) {
-        setAuthError('No users available — contact admin');
-        return;
-      }
-      setPickerUsers(data.users);
-      setPendingPassword(password);
-      setPassword('');
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Network error');
-    } finally {
-      setLoggingIn(false);
-    }
-  }
-
-  // Step 2: user picks their name. We POST password + user to /api/auth/login.
-  // On success the server sets an HttpOnly cookie and we proceed.
-  async function handlePickUser(u: PickerUser) {
-    if (!pendingPassword) return;
-    setLoggingIn(true);
-    setAuthError(null);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ password: pendingPassword, user: u.name }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        // Wrong password / disabled user — bounce back to step 1
-        setAuthError(data.message || 'Login failed');
-        setPendingPassword(null);
-        setPickerUsers([]);
-        return;
-      }
-      setAppUser(data.user.name);
-      setIsAdminSession(data.user.role === 'admin');
-      // Display hint for legacy pages — server cookie is authoritative
-      try { localStorage.setItem('app-user', data.user.name); } catch {}
-      setPendingPassword(null);
-      setPickerUsers([]);
-      await loadProjects();
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Network error');
-      setPendingPassword(null);
-    } finally {
-      setLoggingIn(false);
-    }
-  }
-
   async function handleLogout() {
     try {
       await fetch('/api/auth/logout', {
@@ -278,6 +202,8 @@ export default function Dashboard() {
       localStorage.removeItem('app-user');
       localStorage.removeItem('app-auth'); // legacy bypass key — wipe on every logout
     } catch {}
+    // Login is now /hive only — bounce there after logout.
+    router.replace('/hive');
   }
 
   // Still checking /api/auth/me on mount — show nothing to avoid flash.
@@ -285,74 +211,12 @@ export default function Dashboard() {
     return <div className="min-h-screen bg-bg-primary" />;
   }
 
-  // Step 1 — Password entry
-  if (!appUser && !pendingPassword) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-        <div className="bg-bg-card border border-border rounded-xl p-8 w-full max-w-sm">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-accent-orange">Pawen Command Center</h1>
-            <p className="text-text-secondary text-sm mt-1">Private beta</p>
-          </div>
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => { setPassword(e.target.value); setAuthError(null); }}
-              placeholder="Password"
-              className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-orange"
-              autoFocus
-            />
-            {authError && <p className="text-error text-sm">{authError}</p>}
-            <button
-              type="submit"
-              disabled={loggingIn || !password}
-              className="w-full py-3 bg-accent-orange text-white font-semibold rounded-lg hover:bg-accent-orange-hover disabled:opacity-50"
-            >
-              {loggingIn ? 'Loading…' : 'Next'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  // Step 2 — User picker
-  if (!appUser && pendingPassword) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary p-4">
-        <div className="bg-bg-card border border-border rounded-xl p-8 w-full max-w-md">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-accent-orange">Who are you?</h1>
-            <p className="text-text-secondary text-sm mt-1">
-              Pick your tag — the server will verify the password when you click.
-            </p>
-          </div>
-          {authError && <p className="text-error text-sm text-center mb-3">{authError}</p>}
-          <div className="grid grid-cols-3 gap-2">
-            {pickerUsers.map((u) => (
-              <button
-                key={u.name}
-                onClick={() => handlePickUser(u)}
-                disabled={loggingIn}
-                className={`py-2.5 rounded-lg text-sm font-medium border text-text-primary hover:border-accent-orange disabled:opacity-50 ${
-                  u.role === 'admin' ? 'border-accent-orange/40' : 'border-border'
-                }`}
-              >
-                {u.name}
-                {u.role === 'admin' && <span className="ml-1 text-[9px] text-accent-orange">★</span>}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => { setPendingPassword(null); setPickerUsers([]); setAuthError(null); }}
-            className="w-full mt-4 text-text-muted text-xs hover:text-text-secondary"
-          >
-            ← back
-          </button>
-        </div>
-      </div>
-    );
+  // Login is ONLY available via /hive — bounce unauthenticated visitors there.
+  if (!appUser) {
+    if (typeof window !== 'undefined') {
+      router.replace('/hive');
+    }
+    return <div className="min-h-screen bg-bg-primary" />;
   }
 
   return (

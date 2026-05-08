@@ -1,16 +1,22 @@
 'use client';
 
 // ============================================================
-// PAWEN — /hive   (Phase W — Hive-as-dashboard)
+// PAWEN — /hive   (Phase W — Hive-as-dashboard + sole login entry)
 //
 // 6 island cards in a grid, each showing its owner's projects.
 // User's own card highlighted with gold pulse; their projects are
 // clickable links to /project/[id]. Other users' projects show
 // as label-only badges (lurk).
+//
+// LOGIN ENTRY: this is the ONLY place users can sign in. The
+// home page (/) and any other route bounces unauthenticated
+// visitors here. Two-step flow: password → user picker → cookie.
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+
+type PickerUser = { name: string; role: 'admin' | 'user' | 'blocked' };
 
 interface Brand {
   id: string; ownerId: string; name: string;
@@ -26,12 +32,12 @@ interface ProjectMeta {
 }
 
 const ORDER: Array<{ owner: string; emoji: string; color: string; name: string }> = [
-  { owner: 'sykss',    emoji: '🏝️', color: '#FF8A00', name: 'Sykss' },
-  { owner: 'maghrabi', emoji: '🌴', color: '#2DD4BF', name: 'Maghrabi' },
-  { owner: 'suley',    emoji: '⛰️', color: '#A78BFA', name: 'Suley' },
-  { owner: 'stavo',    emoji: '🗿', color: '#F472B6', name: 'Stavo' },
-  { owner: 'many',     emoji: '🏖️', color: '#FBBF24', name: 'Many' },
-  { owner: 'amlee',    emoji: '🌋', color: '#EF4444', name: 'Amlee' },
+  { owner: 'sykss',     emoji: '🏝️', color: '#FF8A00', name: 'Sykss' },
+  { owner: 'maghrabi',  emoji: '🌴', color: '#2DD4BF', name: 'Maghrabi' },
+  { owner: 'suley',     emoji: '⛰️', color: '#A78BFA', name: 'Suley' },
+  { owner: 'alex',      emoji: '🌊', color: '#06B6D4', name: 'Alex (8lab)' },
+  { owner: 'road',      emoji: '🏔️', color: '#10B981', name: 'Road' },
+  { owner: 'bradriley', emoji: '🍍', color: '#F97316', name: 'Brad Riley' },
 ];
 
 export default function HivePage() {
@@ -40,38 +46,197 @@ export default function HivePage() {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  // Login check-in: once per browser session, ping the server to fire an
-  // auto standup on the most-stale project. Fire-and-forget.
-  useEffect(() => {
-    let alreadyFired = false;
-    try { alreadyFired = sessionStorage.getItem('hive-checkin-fired') === '1'; } catch { /* private mode */ }
-    if (alreadyFired) return;
-    try { sessionStorage.setItem('hive-checkin-fired', '1'); } catch { /* noop */ }
-    void fetch('/api/hive/checkin', { method: 'POST', credentials: 'same-origin' }).catch(() => { /* silent */ });
-  }, []);
+  // ── Login state (sole entry point) ───────────────────────────────
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [password, setPassword] = useState('');
+  const [pendingPassword, setPendingPassword] = useState<string | null>(null);
+  const [pickerUsers, setPickerUsers] = useState<PickerUser[]>([]);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
 
+  async function loadHiveData() {
+    try {
+      const [hRes, pRes] = await Promise.all([
+        fetch('/api/hive/state', { credentials: 'same-origin' }),
+        fetch('/api/hive/projects', { credentials: 'same-origin' }),
+      ]);
+      if (hRes.ok) {
+        const data = await hRes.json() as { brands?: Brand[] };
+        setBrands(data.brands ?? []);
+      }
+      if (pRes.ok) {
+        const data = await pRes.json() as { projects?: ProjectMeta[] };
+        setProjects(data.projects ?? []);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'load failed');
+    }
+  }
+
+  // Mount: check session, load hive data only if logged in
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const [mRes, hRes, pRes] = await Promise.all([
-          fetch('/api/auth/me', { credentials: 'same-origin' }),
-          fetch('/api/hive/state', { credentials: 'same-origin' }),
-          fetch('/api/hive/projects', { credentials: 'same-origin' }),
-        ]);
-        if (mRes.ok) setMe(await mRes.json());
-        if (hRes.ok) {
-          const data = await hRes.json() as { brands?: Brand[] };
-          setBrands(data.brands ?? []);
-        }
-        if (pRes.ok) {
-          const data = await pRes.json() as { projects?: ProjectMeta[] };
-          setProjects(data.projects ?? []);
+        const mRes = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        if (!cancelled && mRes.ok) {
+          const data = await mRes.json() as { user?: { name: string } };
+          if (data.user) {
+            setMe(data);
+            await loadHiveData();
+            // Login check-in: fire once per browser session
+            let alreadyFired = false;
+            try { alreadyFired = sessionStorage.getItem('hive-checkin-fired') === '1'; } catch { /* private mode */ }
+            if (!alreadyFired) {
+              try { sessionStorage.setItem('hive-checkin-fired', '1'); } catch { /* noop */ }
+              void fetch('/api/hive/checkin', { method: 'POST', credentials: 'same-origin' }).catch(() => { /* silent */ });
+            }
+          }
         }
       } catch (e) {
-        setErr(e instanceof Error ? e.message : 'load failed');
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'load failed');
+      } finally {
+        if (!cancelled) setSessionChecked(true);
       }
     })();
+    return () => { cancelled = true; };
   }, []);
+
+  // Step 1 — password → fetch user list (server gates this behind APP_PASSWORD)
+  async function handlePasswordSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!password) return;
+    setAuthError(null);
+    setLoggingIn(true);
+    try {
+      const res = await fetch('/api/auth/users', { credentials: 'same-origin' });
+      if (!res.ok) {
+        setAuthError('Could not load user list — is the server up?');
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok || !Array.isArray(data.users) || data.users.length === 0) {
+        setAuthError('No users available — contact admin');
+        return;
+      }
+      setPickerUsers(data.users);
+      setPendingPassword(password);
+      setPassword('');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  // Step 2 — pick user → POST password+user → cookie
+  async function handlePickUser(u: PickerUser) {
+    if (!pendingPassword) return;
+    setLoggingIn(true);
+    setAuthError(null);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ password: pendingPassword, user: u.name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setAuthError(data.message || 'Login failed');
+        setPendingPassword(null);
+        setPickerUsers([]);
+        return;
+      }
+      try { localStorage.setItem('app-user', data.user.name); } catch {}
+      setMe({ user: { name: data.user.name } });
+      setPendingPassword(null);
+      setPickerUsers([]);
+      await loadHiveData();
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Network error');
+      setPendingPassword(null);
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function handleLogout() {
+    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+    try { localStorage.removeItem('app-user'); localStorage.removeItem('app-auth'); } catch {}
+    setMe(null);
+    setProjects([]);
+    setBrands([]);
+  }
+
+  // Avoid flash before session check
+  if (!sessionChecked) {
+    return <div className="min-h-screen bg-gradient-to-b from-[#03192e] via-[#062842] to-[#021326]" />;
+  }
+
+  // ── LOGIN VIEW (no session) ──────────────────────────────────────
+  if (!me?.user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#03192e] via-[#062842] to-[#021326] text-white flex items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="text-5xl mb-2">🐝</div>
+            <h1 className="text-3xl font-bold">The Hive</h1>
+            <p className="text-white/50 text-sm mt-1">Sign in to enter your island</p>
+          </div>
+
+          {!pendingPassword ? (
+            <form onSubmit={handlePasswordSubmit} className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 space-y-4 backdrop-blur-sm">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setAuthError(null); }}
+                placeholder="Password"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:outline-none focus:border-amber-400"
+                autoFocus
+              />
+              {authError && <p className="text-red-300 text-sm">{authError}</p>}
+              <button
+                type="submit"
+                disabled={loggingIn || !password}
+                className="w-full py-3 bg-amber-500 text-black font-semibold rounded-lg hover:bg-amber-400 disabled:opacity-50 transition-colors"
+              >
+                {loggingIn ? 'Loading…' : 'Next'}
+              </button>
+            </form>
+          ) : (
+            <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
+              <h2 className="text-lg font-semibold text-center mb-1">Who are you?</h2>
+              <p className="text-white/50 text-xs text-center mb-4">Pick your tag</p>
+              {authError && <p className="text-red-300 text-sm text-center mb-3">{authError}</p>}
+              <div className="grid grid-cols-3 gap-2">
+                {pickerUsers.map((u) => (
+                  <button
+                    key={u.name}
+                    onClick={() => handlePickUser(u)}
+                    disabled={loggingIn}
+                    className={`py-2.5 rounded-lg text-sm font-medium border text-white hover:border-amber-400 disabled:opacity-50 transition-colors ${
+                      u.role === 'admin' ? 'border-amber-400/40 bg-amber-500/5' : 'border-white/10 bg-white/[0.02]'
+                    }`}
+                  >
+                    {u.name}
+                    {u.role === 'admin' && <span className="ml-1 text-[9px] text-amber-300">★</span>}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setPendingPassword(null); setPickerUsers([]); setAuthError(null); }}
+                className="w-full mt-4 text-white/40 text-xs hover:text-white/70"
+              >
+                ← back
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  // ── End login view ───────────────────────────────────────────────
 
   const myUsername = me?.user?.name?.toLowerCase() ?? '';
 
@@ -113,8 +278,14 @@ export default function HivePage() {
             {me?.user?.name && <> · logged in as <span className="text-amber-300">{me.user.name}</span></>}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/" className="text-sm text-white/50 hover:text-white">Legacy dashboard →</Link>
+        <div className="flex items-center gap-3">
+          <Link href="/" className="text-sm text-white/50 hover:text-white">Projects →</Link>
+          <button
+            onClick={handleLogout}
+            className="text-sm text-white/50 hover:text-red-300 transition-colors"
+          >
+            Log out
+          </button>
         </div>
       </header>
 

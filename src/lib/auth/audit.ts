@@ -8,6 +8,7 @@
 import 'server-only';
 import { getSql } from '@/lib/db/client';
 import { getClientIp } from './session';
+import { getRequestGeo } from './geo';
 
 export type AuditAction =
   | 'login.success'
@@ -60,9 +61,13 @@ export async function writeAudit(
     const sql = getSql();
     const ip = getClientIp(req);
     const ua = req.headers.get('user-agent') ?? null;
+    // Stamp the request's Vercel-provided geolocation onto every audit row
+    // so we can later answer "where exactly did this user connect from?"
+    const geo = getRequestGeo(req);
+    const enrichedDetails = { ...details, geo };
     await sql`
       INSERT INTO audit_log (user_name, action, details, ip, user_agent)
-      VALUES (${userName}, ${action}, ${JSON.stringify(details)}::jsonb, ${ip}, ${ua})
+      VALUES (${userName}, ${action}, ${JSON.stringify(enrichedDetails)}::jsonb, ${ip}, ${ua})
     `;
   } catch (err) {
     // Logging must never crash the caller. Just log to server console.

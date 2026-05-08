@@ -13,12 +13,12 @@ import type { Brand, BrandLiveStatus } from '@/lib/hive/types';
 export const maxDuration = 15;
 
 const MOCK_BRANDS: Brand[] = [
-  { id: 'mock-1', ownerId: 'sykss',    name: 'Sykss',    avatarEmoji: '🏝️', colorHex: '#FF8A00', sharesPatterns: true, createdAt: '', updatedAt: '' },
-  { id: 'mock-2', ownerId: 'maghrabi', name: 'Maghrabi', avatarEmoji: '🌴', colorHex: '#2DD4BF', sharesPatterns: true, createdAt: '', updatedAt: '' },
-  { id: 'mock-3', ownerId: 'suley',    name: 'Suley',    avatarEmoji: '⛰️', colorHex: '#A78BFA', sharesPatterns: true, createdAt: '', updatedAt: '' },
-  { id: 'mock-4', ownerId: 'stavo',    name: 'Stavo',    avatarEmoji: '🗿', colorHex: '#F472B6', sharesPatterns: true, createdAt: '', updatedAt: '' },
-  { id: 'mock-5', ownerId: 'many',     name: 'Many',     avatarEmoji: '🏖️', colorHex: '#FBBF24', sharesPatterns: true, createdAt: '', updatedAt: '' },
-  { id: 'mock-6', ownerId: 'amlee',    name: 'Amlee',    avatarEmoji: '🌋', colorHex: '#EF4444', sharesPatterns: true, createdAt: '', updatedAt: '' },
+  { id: 'mock-1', ownerId: 'sykss',     name: 'Sykss',       avatarEmoji: '🏝️', colorHex: '#FF8A00', sharesPatterns: true, createdAt: '', updatedAt: '' },
+  { id: 'mock-2', ownerId: 'maghrabi',  name: 'Maghrabi',    avatarEmoji: '🌴', colorHex: '#2DD4BF', sharesPatterns: true, createdAt: '', updatedAt: '' },
+  { id: 'mock-3', ownerId: 'suley',     name: 'Suley',       avatarEmoji: '⛰️', colorHex: '#A78BFA', sharesPatterns: true, createdAt: '', updatedAt: '' },
+  { id: 'mock-4', ownerId: 'alex',      name: 'Alex (8lab)', avatarEmoji: '🌊', colorHex: '#06B6D4', sharesPatterns: true, createdAt: '', updatedAt: '' },
+  { id: 'mock-5', ownerId: 'road',      name: 'Road',        avatarEmoji: '🏔️', colorHex: '#10B981', sharesPatterns: true, createdAt: '', updatedAt: '' },
+  { id: 'mock-6', ownerId: 'bradriley', name: 'Brad Riley',  avatarEmoji: '🍍', colorHex: '#F97316', sharesPatterns: true, createdAt: '', updatedAt: '' },
 ];
 
 function mockStatus(b: Brand): BrandLiveStatus {

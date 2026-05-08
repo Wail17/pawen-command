@@ -48,6 +48,15 @@ export async function GET(req: Request) {
       lastAttempt: string;
       usernames: string[];
       userAgents: string[];
+      // Geolocation seen for this IP (most recent wins). Vercel injects
+      // x-vercel-ip-* headers on every request; we stash them in
+      // audit_log.details.geo via writeAudit().
+      country?: string;
+      countryRegion?: string;
+      city?: string;
+      latitude?: string;
+      longitude?: string;
+      timezone?: string;
       events: { action: string; username: string; time: string; details: Record<string, unknown> }[];
     }>();
 
@@ -89,6 +98,17 @@ export async function GET(req: Request) {
       if (!entry.usernames.includes(row.user_name)) entry.usernames.push(row.user_name);
       if (row.user_agent && !entry.userAgents.includes(row.user_agent)) {
         entry.userAgents.push(row.user_agent.slice(0, 100));
+      }
+      // Lift the geo block out of details so the UI can render it directly.
+      // Most-recent row wins (we iterate in DESC time order).
+      const detailsGeo = (row.details as { geo?: Record<string, string | undefined> } | null)?.geo;
+      if (detailsGeo && !entry.country) {
+        entry.country       = detailsGeo.country;
+        entry.countryRegion = detailsGeo.countryRegion;
+        entry.city          = detailsGeo.city;
+        entry.latitude      = detailsGeo.latitude;
+        entry.longitude     = detailsGeo.longitude;
+        entry.timezone      = detailsGeo.timezone;
       }
       entry.events.push({
         action: row.action,

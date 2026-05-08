@@ -871,7 +871,31 @@ interface IPEntry {
   lastAttempt: string;
   usernames: string[];
   userAgents: string[];
+  // Vercel-injected geolocation, lifted out of audit_log.details.geo
+  country?: string;
+  countryRegion?: string;
+  city?: string;
+  latitude?: string;
+  longitude?: string;
+  timezone?: string;
   events: { action: string; username: string; time: string; details: Record<string, unknown> }[];
+}
+
+function flagFromCountryCode(cc?: string): string {
+  if (!cc || cc.length !== 2) return '';
+  const A = 0x1F1E6;
+  return String.fromCodePoint(
+    A + cc.toUpperCase().charCodeAt(0) - 65,
+    A + cc.toUpperCase().charCodeAt(1) - 65,
+  );
+}
+
+function geoLine(ip: IPEntry): string {
+  const parts: string[] = [];
+  if (ip.city) parts.push(ip.city);
+  if (ip.countryRegion && ip.countryRegion !== ip.city) parts.push(ip.countryRegion);
+  if (ip.country) parts.push(ip.country);
+  return parts.join(', ');
 }
 
 function LoginIPsTab() {
@@ -928,6 +952,7 @@ function LoginIPsTab() {
           <thead>
             <tr className="border-b border-border bg-bg-primary">
               <th className="px-4 py-3 text-left text-text-muted font-medium text-xs">IP Address</th>
+              <th className="px-4 py-3 text-left text-text-muted font-medium text-xs">Location</th>
               <th className="px-4 py-3 text-left text-text-muted font-medium text-xs">Attempts</th>
               <th className="px-4 py-3 text-left text-text-muted font-medium text-xs">Success</th>
               <th className="px-4 py-3 text-left text-text-muted font-medium text-xs">Failed</th>
@@ -944,6 +969,16 @@ function LoginIPsTab() {
                     ip.failures >= 3 ? 'bg-error/5' : ''
                   }`}>
                   <td className="px-4 py-2 font-mono text-text-primary text-xs">{ip.ip}</td>
+                  <td className="px-4 py-2 text-text-secondary text-xs whitespace-nowrap">
+                    {ip.country ? (
+                      <span title={`${geoLine(ip)}${ip.timezone ? ` · ${ip.timezone}` : ''}`}>
+                        <span className="mr-1">{flagFromCountryCode(ip.country)}</span>
+                        {geoLine(ip) || ip.country}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-text-secondary text-xs">{ip.totalAttempts}</td>
                   <td className="px-4 py-2 text-success text-xs">{ip.successes}</td>
                   <td className={`px-4 py-2 text-xs ${ip.failures > 0 ? 'text-error font-medium' : 'text-text-muted'}`}>
@@ -958,7 +993,31 @@ function LoginIPsTab() {
                 </tr>
                 {expandedIP === ip.ip && ip.events.length > 0 && (
                   <tr key={`${ip.ip}-detail`}>
-                    <td colSpan={6} className="px-4 py-3 bg-bg-primary">
+                    <td colSpan={7} className="px-4 py-3 bg-bg-primary">
+                      {(ip.country || ip.latitude) && (
+                        <div className="mb-3 pb-3 border-b border-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                          <span className="text-text-muted">Geo:</span>
+                          {ip.country && (
+                            <span>
+                              <span className="mr-1">{flagFromCountryCode(ip.country)}</span>
+                              <span className="text-text-secondary">{geoLine(ip) || ip.country}</span>
+                            </span>
+                          )}
+                          {ip.timezone && (
+                            <span className="text-text-muted">⏱ {ip.timezone}</span>
+                          )}
+                          {ip.latitude && ip.longitude && (
+                            <a
+                              href={`https://www.google.com/maps?q=${ip.latitude},${ip.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-accent-orange hover:underline"
+                            >
+                              📍 {ip.latitude}, {ip.longitude} → open in Maps
+                            </a>
+                          )}
+                        </div>
+                      )}
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {ip.events.map((e, i) => (
                           <div key={i} className="flex items-center gap-3 text-xs">

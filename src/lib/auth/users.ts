@@ -12,18 +12,18 @@
 
 export const APP_USERS = [
   'AIO',
-  'Amlee',
   'Mee6',
   'Serum',
-  'Stavo',
   'Suley',
   'Zaza',
   'Knd',
   'Maghrabi',
-  'Many',
   'Seven',
   'Soso',
   'Sykss',
+  'Alex',
+  'Road',
+  'BradRiley',
 ] as const;
 
 export type AppUser = (typeof APP_USERS)[number];
