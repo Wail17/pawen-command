@@ -326,7 +326,9 @@ export default function HivePage() {
               ) : (
                 <ul className="space-y-1.5 max-h-72 overflow-y-auto">
                   {isl.projects.map(p => {
-                    const pct = p.progress.total > 0 ? Math.round((p.progress.approved / p.progress.total) * 100) : 0;
+                    const total    = p.progress?.total ?? 0;
+                    const approved = p.progress?.approved ?? 0;
+                    const pct      = total > 0 ? Math.round((approved / total) * 100) : 0;
                     if (isl.isMe) {
                       return (
                         <li key={p.id}>
