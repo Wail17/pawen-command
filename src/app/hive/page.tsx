@@ -323,15 +323,15 @@ export default function HivePage() {
                 </div>
               </div>
 
-              {isl.projects.length === 0 ? (
-                <p className="text-xs text-white/30 italic py-3 text-center">No projects yet</p>
-              ) : (
-                <ul className="space-y-1.5 max-h-72 overflow-y-auto">
-                  {isl.projects.map(p => {
-                    const total    = p.progress?.total ?? 0;
-                    const approved = p.progress?.approved ?? 0;
-                    const pct      = total > 0 ? Math.round((approved / total) * 100) : 0;
-                    if (isl.isMe) {
+              {isl.isMe ? (
+                isl.projects.length === 0 ? (
+                  <p className="text-xs text-white/30 italic py-3 text-center">No projects yet</p>
+                ) : (
+                  <ul className="space-y-1.5 max-h-72 overflow-y-auto">
+                    {isl.projects.map(p => {
+                      const total    = p.progress?.total ?? 0;
+                      const approved = p.progress?.approved ?? 0;
+                      const pct      = total > 0 ? Math.round((approved / total) * 100) : 0;
                       return (
                         <li key={p.id}>
                           <Link
@@ -348,26 +348,41 @@ export default function HivePage() {
                           </Link>
                         </li>
                       );
-                    }
-                    return (
-                      <li key={p.id} className="px-2.5 py-1.5 rounded-lg bg-white/[0.02] cursor-default" title="Lurk view — only owner can open">
-                        <div className="flex items-center justify-between gap-2 opacity-60">
-                          <span className="text-sm truncate">{p.name}</span>
-                          <span className="text-[10px] text-white/30 flex-shrink-0">{pct}%</span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                    })}
+                  </ul>
+                )
+              ) : (
+                /* Other islands: show only an aggregate count, hide project names + progress.
+                   Each owner's work is private; you can't see it from another tag. */
+                <div className="py-4 px-3 rounded-lg bg-white/[0.02] border border-dashed border-white/10 text-center">
+                  <div className="text-2xl mb-1.5 select-none">🔒</div>
+                  <p className="text-xs text-white/60 font-medium">
+                    {isl.projects.length === 0
+                      ? "Aucun projet visible"
+                      : `${isl.projects.length} projet${isl.projects.length > 1 ? 's' : ''} privé${isl.projects.length > 1 ? 's' : ''}`}
+                  </p>
+                  <p className="text-[11px] text-white/30 mt-1 leading-snug">
+                    Interdiction de voir — vous n&apos;êtes pas sur ce profil.
+                  </p>
+                </div>
               )}
 
               <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
-                <Link
-                  href={isl.isMe ? `/brand/${isl.owner}` : `/brand/${isl.owner}?view=lurk`}
-                  className="text-xs text-white/50 hover:text-white"
-                >
-                  {isl.isMe ? 'Open my world →' : 'Lurk →'}
-                </Link>
+                {isl.isMe ? (
+                  <Link
+                    href={`/brand/${isl.owner}`}
+                    className="text-xs text-white/50 hover:text-white"
+                  >
+                    Open my world →
+                  </Link>
+                ) : (
+                  <span
+                    className="text-xs text-white/25 cursor-not-allowed select-none"
+                    title="Privé — vous n'êtes pas sur ce profil"
+                  >
+                    🔒 Privé
+                  </span>
+                )}
                 {isl.isMe && (
                   <Link
                     href="/"
