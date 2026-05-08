@@ -169,6 +169,25 @@ export default function HivePage() {
     setBrands([]);
   }
 
+  // !! Hooks must run in the same order every render — keep useMemo BEFORE
+  // any of the conditional early returns below (loading screen / login view).
+  // Otherwise React throws Minified Error #310 once me?.user transitions.
+  const myUsername = me?.user?.name?.toLowerCase() ?? '';
+  const islands = useMemo(() => {
+    return ORDER.map(o => {
+      const brand = brands.find(b => b.ownerId.toLowerCase() === o.owner);
+      const ownerProjects = projects.filter(p => p.ownerId.toLowerCase() === o.owner);
+      return {
+        owner: o.owner,
+        emoji: brand?.avatarEmoji ?? o.emoji,
+        color: brand?.colorHex ?? o.color,
+        brandName: brand?.name ?? o.name,
+        projects: ownerProjects,
+        isMe: myUsername === o.owner,
+      };
+    });
+  }, [brands, projects, myUsername]);
+
   // Avoid flash before session check
   if (!sessionChecked) {
     return <div className="min-h-screen bg-gradient-to-b from-[#03192e] via-[#062842] to-[#021326]" />;
@@ -237,23 +256,6 @@ export default function HivePage() {
     );
   }
   // ── End login view ───────────────────────────────────────────────
-
-  const myUsername = me?.user?.name?.toLowerCase() ?? '';
-
-  const islands = useMemo(() => {
-    return ORDER.map(o => {
-      const brand = brands.find(b => b.ownerId.toLowerCase() === o.owner);
-      const ownerProjects = projects.filter(p => p.ownerId.toLowerCase() === o.owner);
-      return {
-        owner: o.owner,
-        emoji: brand?.avatarEmoji ?? o.emoji,
-        color: brand?.colorHex ?? o.color,
-        brandName: brand?.name ?? o.name,
-        projects: ownerProjects,
-        isMe: myUsername === o.owner,
-      };
-    });
-  }, [brands, projects, myUsername]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#03192e] via-[#062842] to-[#021326] text-white">
