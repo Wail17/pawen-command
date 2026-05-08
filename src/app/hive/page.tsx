@@ -319,7 +319,10 @@ export default function HivePage() {
                     <h2 className="font-semibold truncate">{isl.brandName}</h2>
                     {isl.isMe && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200">YOU</span>}
                   </div>
-                  <div className="text-xs text-white/40 truncate">@{isl.owner} · {isl.projects.length} projects</div>
+                  <div className="text-xs text-white/40 truncate">
+                    @{isl.owner}
+                    {isl.isMe && <> · {isl.projects.length} projects</>}
+                  </div>
                 </div>
               </div>
 
@@ -354,15 +357,13 @@ export default function HivePage() {
               ) : (
                 /* Other islands: show only an aggregate count, hide project names + progress.
                    Each owner's work is private; you can't see it from another tag. */
-                <div className="py-4 px-3 rounded-lg bg-white/[0.02] border border-dashed border-white/10 text-center">
+                <div className="py-5 px-3 rounded-lg bg-white/[0.02] border border-dashed border-white/10 text-center">
                   <div className="text-2xl mb-1.5 select-none">🔒</div>
-                  <p className="text-xs text-white/60 font-medium">
-                    {isl.projects.length === 0
-                      ? "Aucun projet visible"
-                      : `${isl.projects.length} projet${isl.projects.length > 1 ? 's' : ''} privé${isl.projects.length > 1 ? 's' : ''}`}
+                  <p className="text-xs text-white/60 font-semibold tracking-wide uppercase">
+                    Private
                   </p>
                   <p className="text-[11px] text-white/30 mt-1 leading-snug">
-                    Interdiction de voir — vous n&apos;êtes pas sur ce profil.
+                    Vous n&apos;êtes pas sur ce profil.
                   </p>
                 </div>
               )}
